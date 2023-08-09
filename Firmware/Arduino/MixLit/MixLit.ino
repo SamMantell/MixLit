@@ -9,9 +9,9 @@
 #define outputA 4
 #define outputB 5
 
-#define POTENTIOMETER_PIN0 A0
-#define POTENTIOMETER_PIN1 A1
-#define POTENTIOMETER_PIN2 A2
+#define Slider_00 A0
+#define Slider_01 A1
+#define Slider_02 A2
 
 int counter = 0; 
 int aLastState0; 
@@ -24,8 +24,6 @@ Adafruit_MPR121 cap = Adafruit_MPR121();
 
 uint16_t lasttouched = 0;
 uint16_t currtouched = 0;
-
-byte Slider1Value = 0;
 
 void noteOn(byte channel, byte pitch, byte velocity) {
   midiEventPacket_t noteOn = {0x09, 0x90 | channel, pitch, velocity};
@@ -66,6 +64,11 @@ void setup() {
 }
 
 void loop() {
+
+  //
+  // This is tempary for buttons!
+  //
+
   currtouched = cap.touched();
   
   for (uint8_t i=0; i<12; i++) {
@@ -95,53 +98,37 @@ void loop() {
 
   lasttouched = currtouched;
 
+  //
+  // end of temp
+  //
+
   SliderChanging = false;
 
-  if ((analogRead(POTENTIOMETER_PIN0) > aLastState0 + 1) || (analogRead(POTENTIOMETER_PIN0) < aLastState0 - 1)){
-    Serial.println("Pin 0 changed from " + String(aLastState0)  + " to " + (analogRead(POTENTIOMETER_PIN0)));
-    controlChange(1, 1, analogRead(POTENTIOMETER_PIN0)/8);
+  if ((analogRead(Slider_00) > aLastState0 + 1) || (analogRead(Slider_00) < aLastState0 - 1)){
+    Serial.println("Pin 0 changed from " + String(aLastState0)  + " to " + (analogRead(Slider_00)));
+    controlChange(1, 1, analogRead(Slider_00)/8);
     MidiUSB.flush();
-    aLastState0 = analogRead(POTENTIOMETER_PIN0);
+    aLastState0 = analogRead(Slider_00);
     SliderChanging = true;
   }
 
-  if ((analogRead(POTENTIOMETER_PIN1) > aLastState1 + 1) || (analogRead(POTENTIOMETER_PIN1) < aLastState1 - 1)){
-    Serial.println("Pin 1 changed from " + String(aLastState1) + " to " + (analogRead(POTENTIOMETER_PIN1)));
-    controlChange(1, 2, analogRead(POTENTIOMETER_PIN1)/8);
+  if ((analogRead(Slider_01) > aLastState1 + 1) || (analogRead(Slider_01) < aLastState1 - 1)){
+    Serial.println("Pin 1 changed from " + String(aLastState1) + " to " + (analogRead(Slider_01)));
+    controlChange(1, 2, analogRead(Slider_01)/8);
     MidiUSB.flush();
-    aLastState1 = analogRead(POTENTIOMETER_PIN1);
+    aLastState1 = analogRead(Slider_01);
     SliderChanging = true;
   }
 
-  if ((analogRead(POTENTIOMETER_PIN2) > aLastState2 + 1) || (analogRead(POTENTIOMETER_PIN2) < aLastState2 - 1)){
-    Serial.println("Pin 2 changed from " + String(aLastState2) + " to " + (analogRead(POTENTIOMETER_PIN2)));
-    controlChange(1, 3, analogRead(POTENTIOMETER_PIN2)/8);
+  if ((analogRead(Slider_02) > aLastState2 + 1) || (analogRead(Slider_02) < aLastState2 - 1)){
+    Serial.println("Pin 2 changed from " + String(aLastState2) + " to " + (analogRead(Slider_02)));
+    controlChange(1, 3, analogRead(Slider_02)/8);
     MidiUSB.flush();
-    aLastState2 = analogRead(POTENTIOMETER_PIN2);
+    aLastState2 = analogRead(Slider_02);
     SliderChanging = true;
   }
 
   if (!SliderChanging){
-    delay(100);
+    delay(10);
   }
-
-  /*
-  aState = digitalRead(outputA); // Reads the "current" state of the outputA
-  // If the previous and the current state of the outputA are different, that means a Pulse has occured
-  if (aState != aLastState){     
-    // If the outputB state is different to the outputA state, that means the encoder is rotating clockwise
-    if (digitalRead(outputB) != aState) { 
-      counter ++;
-      controlChange(1, 1, 106 + counter);
-      MidiUSB.flush();
-    } else {
-      counter --;
-      controlChange(1, 1, 106 + counter);
-      MidiUSB.flush();
-    }
-    Serial.print("Position: ");
-    Serial.println(counter);
-  }
-  aLastState = aState;
-  */
 }
