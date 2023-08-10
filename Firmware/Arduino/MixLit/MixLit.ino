@@ -13,7 +13,7 @@ Adafruit_NeoPixel pixels(NUMPIXELS, PIN, NEO_GRB + NEO_KHZ800);
 const int NumOfSliders = 3;
 const int Sliders[NumOfSliders] = {A0, A1, A2};
 
-bool deej = false;
+bool deej = true;
 
 int SliderState[NumOfSliders];
 
@@ -100,7 +100,7 @@ void loop() {
           }
         }
 
-        Serial.println(builtString);
+        Serial.println(builtString + "|0|0");
       }
 
       if (i==1){
