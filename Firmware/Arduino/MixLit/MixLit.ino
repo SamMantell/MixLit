@@ -38,8 +38,9 @@ void setLEDs(int MaxVal, int CurrentVal, int Red, int Green, int Blue, int Brigh
   pixels.clear();
   pixels.setBrightness(Brightness);
   int Range = EndingLED - StartingLED;
-  int Value = int(MaxVal/CurrentVal);
-  int NumOfLEDsOn = int(Range / Value);
+  float Value = float(float(CurrentVal)/float(MaxVal));
+  Serial.println(Value);
+  int NumOfLEDsOn = int(float(Range * Value)*2);
   for (int i = StartingLED; i < NumOfLEDsOn; i++){
     pixels.setPixelColor(i, pixels.Color(Red, Green, Blue));
     pixels.show();
@@ -65,7 +66,7 @@ void setup() {
 void loop() {
   for (int i = 0; i < 3; i++){
     if (SliderChanged(i, analogRead(Sliders[i]), SliderState[i])){
-      //Serial.println("Slider " + String(i) + " Changed from " + String(SliderState[i]) + " to " + String(analogRead(Sliders[i])));
+      Serial.println("Slider " + String(i) + " Changed from " + String(SliderState[i]) + " to " + String(analogRead(Sliders[i])));
       SliderState[i] = analogRead(Sliders[i]);
       controlChange(1, i, SliderState[i]/8);
       //Serial.println("controlChange(1, " + String(i) + ", " + String(int(SliderState[i]/8)) + ")");
