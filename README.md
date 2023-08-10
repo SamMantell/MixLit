@@ -4,7 +4,7 @@
 
 
 # 📦 Hardware
-## Order the Hardware we used from the links below.
+» Order the Hardware we used from the links below.
 
 💡 BTF-LIGHTING - https://www.amazon.co.uk/dp/B088K56MJT?psc=1 <br />
 🎚️ 10K Ohm Slide Potentiometer - https://www.amazon.co.uk/dp/B07PNDLKQQ?psc=1 <br />
