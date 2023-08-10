@@ -47,8 +47,8 @@ void setLEDs(int MaxVal, int CurrentVal, int Red, int Green, int Blue, int MaxBr
   Serial.println(NumOfLEDsOn);
   Serial.println(FinalLEDBrightness);
 
-  for (int i = StartingLED; i < NumOfLEDsOn + 1; i++){
-    if (i < NumOfLEDsOn){
+  for (int i = StartingLED; i < StartingLED + NumOfLEDsOn + 1; i++){
+    if (i < StartingLED + NumOfLEDsOn){
       pixels.setPixelColor(i, pixels.Color(Red, Green, Blue));
       pixels.show();
     }
@@ -84,12 +84,9 @@ void loop() {
       //Serial.println("controlChange(1, " + String(i) + ", " + String(int(SliderState[i]/8)) + ")");
       MidiUSB.flush();
 
-      
       if (i==1){
-        setLEDs(1024, SliderState[i], 255, 255, 255, 128, 0, 4);
+        setLEDs(1024, SliderState[i], 255, 255, 255, 128, 1, 4);
       }
-      
-
     }
   }
   
