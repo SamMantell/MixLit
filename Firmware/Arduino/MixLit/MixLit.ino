@@ -34,16 +34,28 @@ void controlChange(byte channel, byte control, byte value) {
 }
 
 
-void setLEDs(int MaxVal, int CurrentVal, int Red, int Green, int Blue, int Brightness, int StartingLED, int EndingLED) {
+void setLEDs(int MaxVal, int CurrentVal, int Red, int Green, int Blue, int MaxBrightness, int StartingLED, int EndingLED) {
   pixels.clear();
-  pixels.setBrightness(Brightness);
+  pixels.setBrightness(MaxBrightness);
   int Range = EndingLED - StartingLED;
   float Value = float(float(CurrentVal)/float(MaxVal));
   Serial.println(Value);
-  int NumOfLEDsOn = int(float(Range * Value)*2);
-  for (int i = StartingLED; i < NumOfLEDsOn; i++){
-    pixels.setPixelColor(i, pixels.Color(Red, Green, Blue));
-    pixels.show();
+  float NumOfLEDsOnFloat = float(float(Range * Value));
+  int NumOfLEDsOn = int(float(Range * Value));
+  float FinalLEDBrightness = float (NumOfLEDsOnFloat - NumOfLEDsOn);
+
+  Serial.println(NumOfLEDsOn);
+  Serial.println(FinalLEDBrightness);
+
+  for (int i = StartingLED; i < NumOfLEDsOn + 1; i++){
+    if (i < NumOfLEDsOn){
+      pixels.setPixelColor(i, pixels.Color(Red, Green, Blue));
+      pixels.show();
+    }
+    else{
+      pixels.setPixelColor(i, pixels.Color(Red * FinalLEDBrightness, Green * FinalLEDBrightness, Blue * FinalLEDBrightness));
+      pixels.show();
+    }
   }
 }
 
@@ -66,7 +78,7 @@ void setup() {
 void loop() {
   for (int i = 0; i < 3; i++){
     if (SliderChanged(i, analogRead(Sliders[i]), SliderState[i])){
-      Serial.println("Slider " + String(i) + " Changed from " + String(SliderState[i]) + " to " + String(analogRead(Sliders[i])));
+      //Serial.println("Slider " + String(i) + " Changed from " + String(SliderState[i]) + " to " + String(analogRead(Sliders[i])));
       SliderState[i] = analogRead(Sliders[i]);
       controlChange(1, i, SliderState[i]/8);
       //Serial.println("controlChange(1, " + String(i) + ", " + String(int(SliderState[i]/8)) + ")");
@@ -74,7 +86,7 @@ void loop() {
 
       
       if (i==1){
-        setLEDs(1024, SliderState[i], 255, 0, 255, 10, 0, 3);
+        setLEDs(1024, SliderState[i], 255, 255, 255, 128, 0, 4);
       }
       
 
