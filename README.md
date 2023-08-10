@@ -7,9 +7,9 @@
 
 Links to Hardware used
 
-BTF-LIGHTING - https://www.amazon.co.uk/dp/B088K56MJT?psc=1
-10K Ohm Slide Potentiometer - https://www.amazon.co.uk/dp/B07PNDLKQQ?psc=1
-10K Ohm Rotation Potentiometer - https://www.amazon.co.uk/dp/B07B64MWRF?psc=1
+BTF-LIGHTING - https://www.amazon.co.uk/dp/B088K56MJT?psc=1 <br />
+10K Ohm Slide Potentiometer - https://www.amazon.co.uk/dp/B07PNDLKQQ?psc=1 <br />
+10K Ohm Rotation Potentiometer - https://www.amazon.co.uk/dp/B07B64MWRF?psc=1 <br />
 
 ## Balls
 
