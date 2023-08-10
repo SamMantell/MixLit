@@ -1,7 +1,9 @@
 {
   "ExpandedNodes": [
-    ""
+    "",
+    "\\Firmware",
+    "\\Hardware",
+    "\\Software"
   ],
-  "SelectedNode": "\\E:\\Coding\\Windows Apps\\MixLit\\MixLit-Arduino",
   "PreviewInSolutionExplorer": false
 }
