@@ -10,6 +10,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="CoreAudio" Version="1.27.0" />
+    <PackageReference Include="NAudio" Version="2.1.0" />
     <PackageReference Include="SerialPortStream" Version="2.4.1" />
   </ItemGroup>
 

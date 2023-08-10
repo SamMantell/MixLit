@@ -2,6 +2,9 @@ using System;
 using System.Windows.Forms;
 using System.IO.Ports;
 using RJCP.IO.Ports;
+using NAudio.CoreAudioApi;
+using System.Linq;
+using System.Diagnostics;
 
 namespace MixLit_Software
 {
@@ -46,6 +49,34 @@ namespace MixLit_Software
 
         private void slider0_Scroll(object sender, EventArgs e)
         {
+            try
+            {
+                // Get the process of 'spotify.exe'
+                Process spotifyProcess = Process.GetProcessesByName("spotify").FirstOrDefault();
+
+                if (spotifyProcess != null)
+                {
+                    float sliderValue = (float)slider0.Value / slider0.Maximum;
+
+                    MMDeviceEnumerator enumerator = new MMDeviceEnumerator();
+                    MMDevice defaultDevice = enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
+
+                    int sessionCount = defaultDevice.AudioSessionManager.Sessions.Count;
+                    for (int i = 0; i < sessionCount; i++)
+                    {
+                        var session = defaultDevice.AudioSessionManager.Sessions[i];
+                        if (session.GetProcessID == spotifyProcess.Id)
+                        {
+                            session.SimpleAudioVolume.Volume = sliderValue;
+                            break;
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Error adjusting volume: " + ex.Message);
+            }
         }
 
         private void slider1_Scroll(object sender, EventArgs e)
@@ -64,18 +95,9 @@ namespace MixLit_Software
         {
         }
 
-        private void simulateButton_Click_1(object sender, EventArgs e)
+        private void slider2_Scroll_1(object sender, EventArgs e)
         {
-            string simulatedData = simtext.Text;
 
-            try
-            {
-                serialPort.Write(simulatedData);
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show("Error sending simulated data: " + ex.Message);
-            }
         }
     }
 }

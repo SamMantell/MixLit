@@ -33,9 +33,7 @@
             slider2 = new TrackBar();
             slider3 = new TrackBar();
             slider4 = new TrackBar();
-            SimulateText = new Label();
-            simtext = new TextBox();
-            simulateButton = new Button();
+            sliderApp1 = new Label();
             ((System.ComponentModel.ISupportInitialize)slider0).BeginInit();
             ((System.ComponentModel.ISupportInitialize)slider1).BeginInit();
             ((System.ComponentModel.ISupportInitialize)slider2).BeginInit();
@@ -45,80 +43,105 @@
             // 
             // slider0
             // 
-            slider0.Location = new Point(328, 100);
+            slider0.BackColor = SystemColors.ControlDark;
+            slider0.CausesValidation = false;
+            slider0.Cursor = Cursors.No;
+            slider0.LargeChange = 0;
+            slider0.Location = new Point(219, 108);
             slider0.Maximum = 1024;
             slider0.Name = "slider0";
-            slider0.Size = new Size(104, 45);
+            slider0.Orientation = Orientation.Vertical;
+            slider0.RightToLeft = RightToLeft.No;
+            slider0.Size = new Size(45, 248);
+            slider0.SmallChange = 0;
             slider0.TabIndex = 0;
             slider0.TabStop = false;
+            slider0.TickStyle = TickStyle.Both;
             slider0.Scroll += slider0_Scroll;
             // 
             // slider1
             // 
-            slider1.Location = new Point(328, 151);
+            slider1.BackColor = SystemColors.ControlDark;
+            slider1.CausesValidation = false;
+            slider1.Cursor = Cursors.No;
+            slider1.LargeChange = 0;
+            slider1.Location = new Point(282, 108);
             slider1.Maximum = 1024;
             slider1.Name = "slider1";
-            slider1.Size = new Size(104, 45);
+            slider1.Orientation = Orientation.Vertical;
+            slider1.RightToLeft = RightToLeft.No;
+            slider1.Size = new Size(45, 248);
+            slider1.SmallChange = 0;
             slider1.TabIndex = 1;
+            slider1.TickStyle = TickStyle.Both;
             // 
             // slider2
             // 
-            slider2.Location = new Point(328, 202);
+            slider2.BackColor = SystemColors.ControlDark;
+            slider2.CausesValidation = false;
+            slider2.Cursor = Cursors.No;
+            slider2.LargeChange = 0;
+            slider2.Location = new Point(350, 108);
             slider2.Maximum = 1024;
             slider2.Name = "slider2";
-            slider2.Size = new Size(104, 45);
+            slider2.Orientation = Orientation.Vertical;
+            slider2.RightToLeft = RightToLeft.No;
+            slider2.Size = new Size(45, 248);
+            slider2.SmallChange = 0;
             slider2.TabIndex = 2;
+            slider2.TickStyle = TickStyle.Both;
+            slider2.Scroll += slider2_Scroll_1;
             // 
             // slider3
             // 
-            slider3.Location = new Point(328, 253);
+            slider3.BackColor = SystemColors.ControlDark;
+            slider3.CausesValidation = false;
+            slider3.Cursor = Cursors.No;
+            slider3.LargeChange = 0;
+            slider3.Location = new Point(419, 108);
             slider3.Maximum = 1024;
             slider3.Name = "slider3";
-            slider3.Size = new Size(104, 45);
+            slider3.Orientation = Orientation.Vertical;
+            slider3.RightToLeft = RightToLeft.No;
+            slider3.Size = new Size(45, 248);
+            slider3.SmallChange = 0;
             slider3.TabIndex = 3;
+            slider3.TickStyle = TickStyle.Both;
             // 
             // slider4
             // 
-            slider4.Location = new Point(328, 304);
+            slider4.BackColor = SystemColors.ControlDark;
+            slider4.CausesValidation = false;
+            slider4.Cursor = Cursors.No;
+            slider4.LargeChange = 0;
+            slider4.Location = new Point(488, 108);
             slider4.Maximum = 1024;
             slider4.Name = "slider4";
-            slider4.Size = new Size(104, 45);
+            slider4.Orientation = Orientation.Vertical;
+            slider4.RightToLeft = RightToLeft.No;
+            slider4.Size = new Size(45, 248);
+            slider4.SmallChange = 0;
             slider4.TabIndex = 4;
+            slider4.TickStyle = TickStyle.Both;
             // 
-            // SimulateText
+            // sliderApp1
             // 
-            SimulateText.AutoSize = true;
-            SimulateText.Location = new Point(656, 346);
-            SimulateText.Name = "SimulateText";
-            SimulateText.Size = new Size(58, 15);
-            SimulateText.TabIndex = 5;
-            SimulateText.Text = "Simulator";
-            // 
-            // simtext
-            // 
-            simtext.Location = new Point(656, 373);
-            simtext.Name = "simtext";
-            simtext.Size = new Size(100, 23);
-            simtext.TabIndex = 6;
-            // 
-            // simulateButton
-            // 
-            simulateButton.Location = new Point(669, 402);
-            simulateButton.Name = "simulateButton";
-            simulateButton.Size = new Size(75, 23);
-            simulateButton.TabIndex = 7;
-            simulateButton.Text = "Simulate";
-            simulateButton.UseVisualStyleBackColor = true;
-            simulateButton.Click += simulateButton_Click_1;
+            sliderApp1.AutoSize = true;
+            sliderApp1.BackColor = Color.Transparent;
+            sliderApp1.Font = new Font("nevis", 18F, FontStyle.Bold, GraphicsUnit.Point);
+            sliderApp1.Location = new Point(198, 69);
+            sliderApp1.Name = "sliderApp1";
+            sliderApp1.RightToLeft = RightToLeft.No;
+            sliderApp1.Size = new Size(92, 27);
+            sliderApp1.TabIndex = 5;
+            sliderApp1.Text = "Spotify";
             // 
             // Form1
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
             ClientSize = new Size(800, 450);
-            Controls.Add(simulateButton);
-            Controls.Add(simtext);
-            Controls.Add(SimulateText);
+            Controls.Add(sliderApp1);
             Controls.Add(slider4);
             Controls.Add(slider3);
             Controls.Add(slider2);
@@ -142,8 +165,6 @@
         private TrackBar slider2;
         private TrackBar slider3;
         private TrackBar slider4;
-        private Label SimulateText;
-        private TextBox simtext;
-        private Button simulateButton;
+        private Label sliderApp1;
     }
 }
