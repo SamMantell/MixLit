@@ -85,7 +85,7 @@ void loop() {
       MidiUSB.flush();
 
       if (i==1){
-        setLEDs(1024, SliderState[i], 255, 255, 255, 128, 1, 4);
+        setLEDs(1024, SliderState[i], 255, 255, 255, 12, 0, 4);
       }
     }
   }
