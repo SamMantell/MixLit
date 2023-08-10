@@ -99,7 +99,7 @@ void loop() {
     if (SliderChanged(i, analogRead(Sliders[i]), SliderState[i])){
       //Serial.println("Slider " + String(i) + " Changed from " + String(SliderState[i]) + " to " + String(analogRead(Sliders[i])));
       SliderState[i] = analogRead(Sliders[i]);
-      controlChange(1, i, int(SliderState[i]/8));
+      controlChange(1, i, SliderState[i]/8);
       //Serial.println("controlChange(1, " + String(i) + ", " + String(int(SliderState[i]/8)) + ")");
       MidiUSB.flush();
     }
