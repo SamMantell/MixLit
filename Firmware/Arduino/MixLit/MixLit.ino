@@ -10,9 +10,12 @@
 
 Adafruit_NeoPixel pixels(NUMPIXELS, PIN, NEO_GRB + NEO_KHZ800);
 
-const int Sliders[3] = {A0, A1, A2};
+const int NumOfSliders = 3;
+const int Sliders[NumOfSliders] = {A0, A1, A2};
 
-int SliderState[3];
+bool deej = false;
+
+int SliderState[NumOfSliders];
 
 void noteOn(byte channel, byte pitch, byte velocity) {
   midiEventPacket_t noteOn = {0x09, 0x90 | channel, pitch, velocity};
@@ -39,13 +42,13 @@ void setLEDs(int MaxVal, int CurrentVal, int Red, int Green, int Blue, int MaxBr
   pixels.setBrightness(MaxBrightness);
   int Range = EndingLED - StartingLED;
   float Value = float(float(CurrentVal)/float(MaxVal));
-  Serial.println(Value);
+  //Serial.println(Value);
   float NumOfLEDsOnFloat = float(float(Range * Value));
   int NumOfLEDsOn = int(float(Range * Value));
   float FinalLEDBrightness = float (NumOfLEDsOnFloat - NumOfLEDsOn);
 
-  Serial.println(NumOfLEDsOn);
-  Serial.println(FinalLEDBrightness);
+  //Serial.println(NumOfLEDsOn);
+  //Serial.println(FinalLEDBrightness);
 
   for (int i = StartingLED; i < StartingLED + NumOfLEDsOn + 1; i++){
     if (i < StartingLED + NumOfLEDsOn){
@@ -61,7 +64,7 @@ void setLEDs(int MaxVal, int CurrentVal, int Red, int Green, int Blue, int MaxBr
 
 
 bool SliderChanged(int Slider, int SliderValue, int SliderPrevValue){
-  return ((SliderValue < SliderPrevValue - 1) || (SliderValue > SliderPrevValue + 1));
+  return ((SliderValue < SliderPrevValue - 4) || (SliderValue > SliderPrevValue + 4));
 }
 
 void setup() {
@@ -76,13 +79,29 @@ void setup() {
 }
 
 void loop() {
-  for (int i = 0; i < 3; i++){
+  for (int i = 0; i < NumOfSliders; i++){
     if (SliderChanged(i, analogRead(Sliders[i]), SliderState[i])){
       //Serial.println("Slider " + String(i) + " Changed from " + String(SliderState[i]) + " to " + String(analogRead(Sliders[i])));
       SliderState[i] = analogRead(Sliders[i]);
-      controlChange(1, i, SliderState[i]/8);
-      //Serial.println("controlChange(1, " + String(i) + ", " + String(int(SliderState[i]/8)) + ")");
-      MidiUSB.flush();
+
+      if (!deej) {
+        controlChange(1, i, SliderState[i]/8);
+        //Serial.println("controlChange(1, " + String(i) + ", " + String(int(SliderState[i]/8)) + ")");
+        MidiUSB.flush();
+      }
+      else {
+        String builtString = String("");
+
+        for (int i = 0; i < NumOfSliders; i++) {
+          builtString += String((int)SliderState[i]);
+
+          if (i < NumOfSliders - 1) {
+            builtString += String("|");
+          }
+        }
+
+        Serial.println(builtString);
+      }
 
       if (i==1){
         setLEDs(1024, SliderState[i], 255, 255, 255, 12, 0, 4);
