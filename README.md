@@ -4,17 +4,9 @@
 
 
 # 📦 Hardware
-##Order the Hardware we used from the links below.
+## Order the Hardware we used from the links below.
 
 💡 BTF-LIGHTING - https://www.amazon.co.uk/dp/B088K56MJT?psc=1 <br />
 🎚️ 10K Ohm Slide Potentiometer - https://www.amazon.co.uk/dp/B07PNDLKQQ?psc=1 <br />
 🎛️ 10K Ohm Rotation Potentiometer - https://www.amazon.co.uk/dp/B07B64MWRF?psc=1 <br />
-
-## Balls
-
-This section is purely dedicated to balls.
-
-```bash
-  [npm run balls](https://www.amazon.co.uk/dp/B07B64MWRF?psc=1)https://www.amazon.co.uk/dp/B07B64MWRF?psc=1
-```
 
