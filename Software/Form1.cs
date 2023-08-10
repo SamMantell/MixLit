@@ -12,6 +12,7 @@ namespace MixLit_Software
     {
         private RJCP.IO.Ports.SerialPortStream serialPort;
         private TrackBar[] sliders;
+        private Process process;
         public Form1()
         {
             InitializeComponent();
@@ -28,7 +29,22 @@ namespace MixLit_Software
             {
                 MessageBox.Show("Error opening serial port: " + ex.Message);
             }
-        }
+
+            MMDeviceEnumerator enumerator = new MMDeviceEnumerator();
+            MMDevice defaultDevice = enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
+            var sessions = defaultDevice.AudioSessionManager.Sessions;
+
+            for (int i = 0; i < sessions.Count; i++)
+             {
+               var session = sessions[i];
+             var processId = session.GetProcessID;
+            process = Process.GetProcessById((int)processId);
+            if (process != null)
+            {
+               Slider1AppSelect.Items.Add(process.ProcessName);
+            }
+            }
+            }
 
         private void SerialPort_DataReceived(object sender, SerialDataReceivedEventArgs e)
         {
@@ -51,10 +67,7 @@ namespace MixLit_Software
         {
             try
             {
-                // Get the process of 'spotify.exe'
-                Process spotifyProcess = Process.GetProcessesByName("spotify").FirstOrDefault();
-
-                if (spotifyProcess != null)
+                if (process != null)
                 {
                     float sliderValue = (float)slider0.Value / slider0.Maximum;
 
@@ -65,7 +78,7 @@ namespace MixLit_Software
                     for (int i = 0; i < sessionCount; i++)
                     {
                         var session = defaultDevice.AudioSessionManager.Sessions[i];
-                        if (session.GetProcessID == spotifyProcess.Id)
+                        if (session.GetProcessID == process.Id)
                         {
                             session.SimpleAudioVolume.Volume = sliderValue;
                             break;
@@ -98,6 +111,36 @@ namespace MixLit_Software
         private void slider2_Scroll_1(object sender, EventArgs e)
         {
 
+        }
+        private void Slider1AppSelect_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            string selectedAppName = Slider1AppSelect.SelectedItem.ToString();
+            process = Process.GetProcessesByName(selectedAppName)
+                            .FirstOrDefault();
+
+            if (process != null)
+            {
+                MessageBox.Show("Selected process: " + process.ProcessName);
+            }
+            else
+            {
+                MessageBox.Show("Process not found or not suitable for volume control: " + selectedAppName);
+            }
+        }
+
+        private List<string> GetRunningApplicationNames()
+        {
+            List<string> appNames = new List<string>();
+
+            Process[] processes = Process.GetProcesses();
+
+            appNames = processes
+                .Where(p => p.MainWindowHandle != IntPtr.Zero && p.WorkingSet64 > 1024 * 1024)
+                .Select(p => p.ProcessName)
+                .Distinct()
+                .ToList();
+
+            return appNames;
         }
     }
 }

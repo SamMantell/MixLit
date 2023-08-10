@@ -34,6 +34,7 @@
             slider3 = new TrackBar();
             slider4 = new TrackBar();
             sliderApp1 = new Label();
+            Slider1AppSelect = new ComboBox();
             ((System.ComponentModel.ISupportInitialize)slider0).BeginInit();
             ((System.ComponentModel.ISupportInitialize)slider1).BeginInit();
             ((System.ComponentModel.ISupportInitialize)slider2).BeginInit();
@@ -136,11 +137,21 @@
             sliderApp1.TabIndex = 5;
             sliderApp1.Text = "Spotify";
             // 
+            // Slider1AppSelect
+            // 
+            Slider1AppSelect.FormattingEnabled = true;
+            Slider1AppSelect.Location = new Point(181, 362);
+            Slider1AppSelect.Name = "Slider1AppSelect";
+            Slider1AppSelect.Size = new Size(121, 23);
+            Slider1AppSelect.TabIndex = 6;
+            Slider1AppSelect.SelectedIndexChanged += Slider1AppSelect_SelectedIndexChanged;
+            // 
             // Form1
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
             ClientSize = new Size(800, 450);
+            Controls.Add(Slider1AppSelect);
             Controls.Add(sliderApp1);
             Controls.Add(slider4);
             Controls.Add(slider3);
@@ -166,5 +177,6 @@
         private TrackBar slider3;
         private TrackBar slider4;
         private Label sliderApp1;
+        private ComboBox Slider1AppSelect;
     }
 }
