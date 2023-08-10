@@ -6,17 +6,9 @@
 #define _BV(bit) (1 << (bit)) 
 #endif
 
-#define outputA 4
-#define outputB 5
+const int Sliders[3] = {A0, A1, A2};
 
-#define Slider_00 A0
-#define Slider_01 A1
-#define Slider_02 A2
-
-int counter = 0; 
-int aLastState0; 
-int aLastState1;  
-int aLastState2;  
+int SliderState[3];
 
 bool SliderChanging = false;
 
@@ -44,10 +36,11 @@ void controlChange(byte channel, byte control, byte value) {
   MidiUSB.sendMIDI(event);
 }
 
-void setup() {
+bool SliderChanged(int Slider, int SliderValue, int SliderPrevValue){
+  return ((SliderValue < SliderPrevValue - 1) || (SliderValue > SliderPrevValue + 1));
+}
 
-  pinMode (outputA,INPUT);
-  pinMode (outputB,INPUT);
+void setup() {
 
   Serial.begin(115200);
 
@@ -69,9 +62,10 @@ void loop() {
   // This is tempary for buttons!
   //
 
+  /*
   currtouched = cap.touched();
   
-  for (uint8_t i=0; i<12; i++) {
+  for (uint8_t i = 0; i < 12; i++) {
     if ((currtouched & _BV(i)) && !(lasttouched & _BV(i)) ) {
       Serial.print(i); Serial.println(" touched");
       if (i == 1){
@@ -98,37 +92,23 @@ void loop() {
 
   lasttouched = currtouched;
 
+  */
+
   //
   // end of temp
   //
 
   SliderChanging = false;
 
-  if ((analogRead(Slider_00) > aLastState0 + 1) || (analogRead(Slider_00) < aLastState0 - 1)){
-    Serial.println("Pin 0 changed from " + String(aLastState0)  + " to " + (analogRead(Slider_00)));
-    controlChange(1, 1, analogRead(Slider_00)/8);
-    MidiUSB.flush();
-    aLastState0 = analogRead(Slider_00);
-    SliderChanging = true;
+  for (int i = 0; i < 3; i++){
+    if (SliderChanged(i, analogRead(Sliders[i]), SliderState[i])){
+      //Serial.println("Slider " + String(i) + " Changed from " + String(SliderState[i]) + " to " + String(analogRead(Sliders[i])));
+      SliderState[i] = analogRead(Sliders[i]);
+      controlChange(1, i, int(SliderState[i]/8));
+      //Serial.println("controlChange(1, " + String(i) + ", " + String(int(SliderState[i]/8)) + ")");
+      MidiUSB.flush();
+    }
   }
-
-  if ((analogRead(Slider_01) > aLastState1 + 1) || (analogRead(Slider_01) < aLastState1 - 1)){
-    Serial.println("Pin 1 changed from " + String(aLastState1) + " to " + (analogRead(Slider_01)));
-    controlChange(1, 2, analogRead(Slider_01)/8);
-    MidiUSB.flush();
-    aLastState1 = analogRead(Slider_01);
-    SliderChanging = true;
-  }
-
-  if ((analogRead(Slider_02) > aLastState2 + 1) || (analogRead(Slider_02) < aLastState2 - 1)){
-    Serial.println("Pin 2 changed from " + String(aLastState2) + " to " + (analogRead(Slider_02)));
-    controlChange(1, 3, analogRead(Slider_02)/8);
-    MidiUSB.flush();
-    aLastState2 = analogRead(Slider_02);
-    SliderChanging = true;
-  }
-
-  if (!SliderChanging){
-    delay(10);
-  }
+  
+  delay(10);
 }
