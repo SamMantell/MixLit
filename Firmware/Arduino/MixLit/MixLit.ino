@@ -10,8 +10,6 @@ const int Sliders[3] = {A0, A1, A2};
 
 int SliderState[3];
 
-bool SliderChanging = false;
-
 Adafruit_MPR121 cap = Adafruit_MPR121();
 
 uint16_t lasttouched = 0;
@@ -97,9 +95,6 @@ void loop() {
   //
   // end of temp
   //
-
-  SliderChanging = false;
-
   for (int i = 0; i < 3; i++){
     if (SliderChanged(i, analogRead(Sliders[i]), SliderState[i])){
       //Serial.println("Slider " + String(i) + " Changed from " + String(SliderState[i]) + " to " + String(analogRead(Sliders[i])));
