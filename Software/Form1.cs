@@ -12,13 +12,13 @@ namespace MixLit_Software
     {
         private RJCP.IO.Ports.SerialPortStream serialPort;
         private TrackBar[] sliders;
+        private Dictionary<TrackBar, Tuple<Process, List<int>>> sliderProcesses = new Dictionary<TrackBar, Tuple<Process, List<int>>>();
+        private MMDeviceEnumerator deviceEnumerator;
         private Process slider1Process;
         private Process slider2Process;
         private Process slider3Process;
         private Process slider4Process;
         private Process slider5Process;
-
-        private MMDeviceEnumerator deviceEnumerator;
 
         public Form1()
         {
@@ -45,36 +45,54 @@ namespace MixLit_Software
             {
                 var session = sessions[i];
                 var processId = session.GetProcessID;
-                slider1Process = Process.GetProcessById((int)processId);
-                if (slider1Process != null)
-                {
-                    Slider1AppSelect.Items.Add(slider1Process.ProcessName);
-                }
 
-                slider2Process = Process.GetProcessById((int)processId);
-                if (slider2Process != null)
+                foreach (var slider in sliders)
                 {
-                    slider2AppSelect.Items.Add(slider2Process.ProcessName);
-                }
-
-                slider3Process = Process.GetProcessById((int)processId);
-                if (slider3Process != null)
-                {
-                    slider3AppSelect.Items.Add(slider3Process.ProcessName);
-                }
-
-                slider4Process = Process.GetProcessById((int)processId);
-                if (slider4Process != null)
-                {
-                    slider4AppSelect.Items.Add(slider4Process.ProcessName);
-                }
-
-                slider5Process = Process.GetProcessById((int)processId);
-                if (slider5Process != null)
-                {
-                    slider5AppSelect.Items.Add(slider5Process.ProcessName);
+                    Process sliderProcess = Process.GetProcessById((int)processId);
+                    if (sliderProcess != null)
+                    {
+                        ComboBox appSelect = GetAppSelectComboBox(slider);
+                        appSelect.Items.Add(sliderProcess.ProcessName);
+                        if (!sliderProcesses.ContainsKey(slider))
+                        {
+                            sliderProcesses[slider] = new Tuple<Process, List<int>>(sliderProcess, new List<int>());
+                        }
+                        sliderProcesses[slider].Item2.Add(sliderProcess.Id);
+                    }
                 }
             }
+
+            foreach (var slider in sliders)
+            {
+                slider.Scroll += Slider_Scroll;
+            }
+        }
+
+        private void Slider_Scroll(object sender, EventArgs e)
+        {
+            TrackBar slider = sender as TrackBar;
+            if (slider != null)
+            {
+                int sliderIndex = Array.IndexOf(sliders, slider);
+                int sensorValue = slider.Value;
+                AdjustVolumeForSlider(sliderIndex, sensorValue);
+            }
+        }
+
+        private ComboBox GetAppSelectComboBox(TrackBar slider)
+        {
+            if (slider == slider1)
+                return Slider1AppSelect;
+            else if (slider == slider2)
+                return slider2AppSelect;
+            else if (slider == slider3)
+                return slider3AppSelect;
+            else if (slider == slider4)
+                return slider4AppSelect;
+            else if (slider == slider5)
+                return slider5AppSelect;
+            else
+                return null;
         }
 
         private void SerialPort_DataReceived(object sender, SerialDataReceivedEventArgs e)
@@ -89,8 +107,6 @@ namespace MixLit_Software
                     BeginInvoke(new Action(() =>
                     {
                         sliders[i].Value = sensorValue;
-
-                        // Align sliders correctly
                         AdjustVolumeForSlider(i, sensorValue);
                     }));
                 }
@@ -115,6 +131,7 @@ namespace MixLit_Software
                         if (session.GetProcessID == sliderProcess.Id)
                         {
                             session.SimpleAudioVolume.Volume = sliderValue;
+                            //MessageBox.Show("Session Deets:" + "\nSession Process ID: " + session.GetProcessID + "\nSession Process Display Name: " + session.DisplayName + "\nSession Identifier: " + session.GetSessionIdentifier + "\nSession State: " + session.State);
                             break;
                         }
                     }
@@ -122,7 +139,7 @@ namespace MixLit_Software
             }
             catch (Exception ex)
             {
-                MessageBox.Show("Error adjusting volume: " + ex.Message);
+                Console.Write(ex.ToString());
             }
         }
 
