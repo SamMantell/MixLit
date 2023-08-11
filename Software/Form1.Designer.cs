@@ -321,7 +321,7 @@
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
             BackColor = Color.FromArgb(24, 24, 24);
-            ClientSize = new Size(800, 450);
+            ClientSize = new Size(810, 537);
             Controls.Add(slider5AppSelect);
             Controls.Add(slider4AppSelect);
             Controls.Add(slider3AppSelect);

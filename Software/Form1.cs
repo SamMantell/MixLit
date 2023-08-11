@@ -17,6 +17,9 @@ namespace MixLit_Software
         private Process slider3Process;
         private Process slider4Process;
         private Process slider5Process;
+
+        private MMDeviceEnumerator deviceEnumerator;
+
         public Form1()
         {
             InitializeComponent();
@@ -86,8 +89,59 @@ namespace MixLit_Software
                     BeginInvoke(new Action(() =>
                     {
                         sliders[i].Value = sensorValue;
+
+                        // Align sliders correctly
+                        AdjustVolumeForSlider(i, sensorValue);
                     }));
                 }
+            }
+        }
+
+        private void AdjustVolumeForSlider(int sliderIndex, int sensorValue)
+        {
+            try
+            {
+                float sliderValue = (float)sensorValue / sliders[sliderIndex].Maximum;
+                MMDeviceEnumerator enumerator = new MMDeviceEnumerator();
+                MMDevice defaultDevice = enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
+
+                Process sliderProcess = GetSliderProcess(sliderIndex);
+                if (sliderProcess != null)
+                {
+                    int sessionCount = defaultDevice.AudioSessionManager.Sessions.Count;
+                    for (int i = 0; i < sessionCount; i++)
+                    {
+                        var session = defaultDevice.AudioSessionManager.Sessions[i];
+                        if (session.GetProcessID == sliderProcess.Id)
+                        {
+                            session.SimpleAudioVolume.Volume = sliderValue;
+                            break;
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Error adjusting volume: " + ex.Message);
+            }
+        }
+
+        private Process GetSliderProcess(int sliderIndex)
+        {
+            switch (sliderIndex)
+            {
+                case 0:
+                    return slider1Process;
+                case 1:
+                    return slider2Process;
+                case 2:
+                    return slider3Process;
+                case 3:
+                    return slider4Process;
+                case 4:
+                    return slider5Process;
+                default:
+                    return null;
             }
         }
 
