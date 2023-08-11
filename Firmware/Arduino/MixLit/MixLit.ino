@@ -37,28 +37,23 @@ void controlChange(byte channel, byte control, byte value) {
 }
 
 
-void setLEDs(int MaxVal, int CurrentVal, int Red, int Green, int Blue, int MaxBrightness, int StartingLED, int EndingLED) {
+void setLEDs(float MaxVal, float CurrentVal, int Red, int Green, int Blue, int MaxBrightness, int StartingLED, int EndingLED) {
   pixels.clear();
   pixels.setBrightness(MaxBrightness);
-  int Range = EndingLED - StartingLED;
-  float Value = float(float(CurrentVal)/float(MaxVal));
-  //Serial.println(Value);
-  float NumOfLEDsOnFloat = float(float(Range * Value));
-  int NumOfLEDsOn = int(float(Range * Value));
-  float FinalLEDBrightness = float (NumOfLEDsOnFloat - NumOfLEDsOn);
-
-  //Serial.println(NumOfLEDsOn);
-  //Serial.println(FinalLEDBrightness);
+  float Range = EndingLED - StartingLED;
+  float Value = CurrentVal/MaxVal;
+  float NumOfLEDsOnFloat = Range * Value;
+  int NumOfLEDsOn = int(Range * Value);
+  float FinalLEDBrightness = NumOfLEDsOnFloat - NumOfLEDsOn;
 
   for (int i = StartingLED; i < StartingLED + NumOfLEDsOn + 1; i++){
     if (i < StartingLED + NumOfLEDsOn){
       pixels.setPixelColor(i, pixels.Color(Red, Green, Blue));
-      pixels.show();
     }
     else{
       pixels.setPixelColor(i, pixels.Color(Red * FinalLEDBrightness, Green * FinalLEDBrightness, Blue * FinalLEDBrightness));
-      pixels.show();
     }
+    pixels.show();
   }
 }
 
