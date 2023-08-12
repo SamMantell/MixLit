@@ -100,13 +100,14 @@ namespace MixLit_Software
             string data = serialPort.ReadLine();
             string[] sliderValues = data.Split('|');
 
-            for (int i = 0; i < sliderValues.Length; i++)
+            for (int i = 0; i < sliderValues.Length - 1; i++)
             {
                 if (i < sliders.Length && int.TryParse(sliderValues[i], out int sensorValue))
                 {
                     BeginInvoke(new Action(() =>
                     {
                         sliders[i].Value = sensorValue;
+                        // Adjust volume based on the received sensor value
                         AdjustVolumeForSlider(i, sensorValue);
                     }));
                 }
@@ -121,18 +122,23 @@ namespace MixLit_Software
                 MMDeviceEnumerator enumerator = new MMDeviceEnumerator();
                 MMDevice defaultDevice = enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
 
-                Process sliderProcess = GetSliderProcess(sliderIndex);
-                if (sliderProcess != null)
+                // Iterate through all sliderProcesses and adjust volume for matching sessions
+                foreach (var kvp in sliderProcesses)
                 {
-                    int sessionCount = defaultDevice.AudioSessionManager.Sessions.Count;
-                    for (int i = 0; i < sessionCount; i++)
+                    TrackBar slider = kvp.Key;
+                    Process sliderProcess = kvp.Value.Item1;
+
+                    if (sliderProcess != null)
                     {
-                        var session = defaultDevice.AudioSessionManager.Sessions[i];
-                        if (session.GetProcessID == sliderProcess.Id)
+                        int sessionCount = defaultDevice.AudioSessionManager.Sessions.Count;
+                        for (int i = 0; i < sessionCount; i++)
                         {
-                            session.SimpleAudioVolume.Volume = sliderValue;
-                            //MessageBox.Show("Session Deets:" + "\nSession Process ID: " + session.GetProcessID + "\nSession Process Display Name: " + session.DisplayName + "\nSession Identifier: " + session.GetSessionIdentifier + "\nSession State: " + session.State);
-                            break;
+                            var session = defaultDevice.AudioSessionManager.Sessions[i];
+                            if (kvp.Value.Item2.Contains((int)session.GetProcessID))
+                            {
+                                session.SimpleAudioVolume.Volume = sliderValue;
+                                break;
+                            }
                         }
                     }
                 }
