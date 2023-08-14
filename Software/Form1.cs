@@ -5,6 +5,7 @@ using RJCP.IO.Ports;
 using NAudio.CoreAudioApi;
 using System.Linq;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 
 namespace MixLit_Software
 {
@@ -13,6 +14,7 @@ namespace MixLit_Software
         private RJCP.IO.Ports.SerialPortStream serialPort;
         private TrackBar[] sliders;
         private Dictionary<TrackBar, Tuple<Process, List<int>>> sliderProcesses = new Dictionary<TrackBar, Tuple<Process, List<int>>>();
+        private Dictionary<TrackBar, FlowLayoutPanel> sliderBars = new Dictionary<TrackBar, FlowLayoutPanel>();
         private MMDeviceEnumerator deviceEnumerator;
         private Process slider1Process;
         private Process slider2Process;
@@ -20,9 +22,23 @@ namespace MixLit_Software
         private Process slider4Process;
         private Process slider5Process;
 
+        private Dictionary<TrackBar, bool> sliderChanging = new Dictionary<TrackBar, bool>();
+        private System.Timers.Timer colorTransitionTimer = new System.Timers.Timer();
+        private System.Timers.Timer rainbowEffectTimer = new System.Timers.Timer();
+        private int rainbowColorIndex = 0;
+
+        private const int AnimationInterval = 24;
+        private const float EasingFactor = 0.1f;
+
+        private bool isFollowingMouse = false;
+        private Task animationTask;
+
         public Form1()
         {
             InitializeComponent();
+
+            this.MouseDown += Form1_MouseDown;
+            //this.MouseMove += Form1_MouseMove;
 
             sliders = new TrackBar[] { slider1, slider2, slider3, slider4, slider5 };
 
@@ -65,7 +81,158 @@ namespace MixLit_Software
             foreach (var slider in sliders)
             {
                 slider.Scroll += Slider_Scroll;
+                FlowLayoutPanel bar = CreateSliderBar();
+                sliderBars[slider] = bar;
+                bar.Visible = false;
+                Controls.Add(bar);
+                bar.SendToBack();
             }
+
+            foreach (var slider in sliders)
+            {
+                sliderChanging[slider] = false;
+            }
+
+            colorTransitionTimer.Interval = 200;
+            colorTransitionTimer.Start();
+            colorTransitionTimer.Elapsed += ColorTransitionTimer_Tick;
+
+            rainbowEffectTimer.Interval = 100;
+            rainbowEffectTimer.Start();
+            rainbowEffectTimer.Elapsed += RainbowEffectTimer_Tick;
+
+        }
+
+        private async void Form1_MouseDown(object sender, MouseEventArgs e)
+        {
+            if (e.Button == MouseButtons.Left)
+            {
+                if (isFollowingMouse)
+                {
+                    isFollowingMouse = false;
+                    return;
+                }
+
+                isFollowingMouse = true;
+
+                if (animationTask == null || animationTask.IsCompleted)
+                {
+                    animationTask = AnimateGlideAsync();
+                }
+            }
+        }
+
+        private async Task AnimateGlideAsync()
+        {
+            while (isFollowingMouse)
+            {
+                await Task.Delay(AnimationInterval);
+
+                Point targetPosition = Cursor.Position;
+                Point currentPosition = this.Location;
+
+                int dx = (int)((targetPosition.X - currentPosition.X) * EasingFactor);
+                int dy = (int)((targetPosition.Y - currentPosition.Y) * EasingFactor);
+
+                this.Invoke(new Action(() =>
+                {
+                    this.Location = new Point(currentPosition.X + dx, currentPosition.Y + dy);
+                }));
+            }
+        }
+
+
+        private void ColorTransitionTimer_Tick(object sender, EventArgs e)
+        {
+            foreach (var slider in sliders)
+            {
+                if (sliderChanging[slider])
+                {
+                    BeginInvoke(new Action(() =>
+                    {
+                        int sensorValue = slider.Value;
+                        UpdateSliderBar(slider, sensorValue);
+                    }));
+                }
+            }
+        }
+
+        private void RainbowEffectTimer_Tick(object sender, EventArgs e)
+        {
+            rainbowColorIndex = (rainbowColorIndex + 1) % 360;
+            Color rainbowColor = ColorFromHSV(rainbowColorIndex, 1, 1);
+
+            foreach (var kvp in sliderBars)
+            {
+                FlowLayoutPanel bar = kvp.Value;
+                bar.BackColor = rainbowColor;
+            }
+        }
+
+        private Color ColorFromHSV(int hue, double saturation, double value)
+        {
+            int hi = Convert.ToInt32(Math.Floor((double)hue / 60)) % 6;
+            double f = (double)hue / 60 - Math.Floor((double)hue / 60);
+
+            value = value * 255;
+            int v = Convert.ToInt32(value);
+            int p = Convert.ToInt32(value * (1 - saturation));
+            int q = Convert.ToInt32(value * (1 - f * saturation));
+            int t = Convert.ToInt32(value * (1 - (1 - f) * saturation));
+
+            if (hi == 0)
+                return Color.FromArgb(255, v, t, p);
+            else if (hi == 1)
+                return Color.FromArgb(255, q, v, p);
+            else if (hi == 2)
+                return Color.FromArgb(255, p, v, t);
+            else if (hi == 3)
+                return Color.FromArgb(255, p, q, v);
+            else if (hi == 4)
+                return Color.FromArgb(255, t, p, v);
+            else
+                return Color.FromArgb(255, v, p, q);
+        }
+
+        private FlowLayoutPanel CreateSliderBar()
+        {
+            FlowLayoutPanel bar = new FlowLayoutPanel();
+            bar.BackColor = Color.Green;
+            bar.Width = 64;
+            bar.Margin = new Padding(5);
+            return bar;
+        }
+
+        private void UpdateSliderBar(TrackBar slider, int sensorValue)
+        {
+            if (sliderBars.TryGetValue(slider, out FlowLayoutPanel bar))
+            {
+                float heightPercentage = (float)sensorValue / slider.Maximum + 0.1f;
+
+                if (sliderChanging[slider])
+                {
+                    int redValue = (int)(255 * heightPercentage);
+                    int greenValue = 255 - redValue;
+                    bar.BackColor = Color.FromArgb(redValue, greenValue, 0);
+                }
+                else
+                {
+                    int maxHeight = slider.Height - (bar.Margin.Top + bar.Margin.Bottom) + 10;
+                    int newHeight = (int)EaseInOutCubic(slider.Value, 0, maxHeight, slider.Maximum);
+                    bar.Height = newHeight;
+                    int topOffset = (slider.Height - bar.Height);
+                    bar.Top = slider.Top + topOffset;
+                    bar.Left = (slider.Left + slider.Width + bar.Margin.Left) - slider.Width - 15;
+                }
+            }
+        }
+
+        private float EaseInOutCubic(float t, float b, float c, float d)
+        {
+            t /= d / 2;
+            if (t < 1) return c / 2 * t * t * t + b;
+            t -= 2;
+            return c / 2 * (t * t * t + 2) + b;
         }
 
         private void Slider_Scroll(object sender, EventArgs e)
@@ -73,9 +240,15 @@ namespace MixLit_Software
             TrackBar slider = sender as TrackBar;
             if (slider != null)
             {
-                int sliderIndex = Array.IndexOf(sliders, slider);
+                sliderChanging[slider] = false;
                 int sensorValue = slider.Value;
-                AdjustVolumeForSlider(sliderIndex, sensorValue);
+                UpdateSliderBar(slider, sensorValue);
+                AdjustVolumeForSlider(slider.Value, sensorValue);
+
+                if (sliderBars.TryGetValue(slider, out FlowLayoutPanel bar))
+                {
+                    bar.Visible = true;
+                }
             }
         }
 
@@ -107,7 +280,6 @@ namespace MixLit_Software
                     BeginInvoke(new Action(() =>
                     {
                         sliders[i].Value = sensorValue;
-                        // Adjust volume based on the received sensor value
                         AdjustVolumeForSlider(i, sensorValue);
                     }));
                 }
@@ -122,7 +294,6 @@ namespace MixLit_Software
                 MMDeviceEnumerator enumerator = new MMDeviceEnumerator();
                 MMDevice defaultDevice = enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
 
-                // Iterate through all sliderProcesses and adjust volume for matching sessions
                 foreach (var kvp in sliderProcesses)
                 {
                     TrackBar slider = kvp.Key;
@@ -305,6 +476,7 @@ namespace MixLit_Software
                             .FirstOrDefault();
 
             slider1AppName.Text = slider1Process.ProcessName;
+            slider1.Enabled = true;
 
             if (slider1Process != null)
             {
@@ -333,6 +505,7 @@ namespace MixLit_Software
                             .FirstOrDefault();
 
             slider2AppName.Text = slider2Process.ProcessName;
+            slider2.Enabled = true;
 
             if (slider2Process != null)
             {
@@ -361,6 +534,7 @@ namespace MixLit_Software
                             .FirstOrDefault();
 
             slider3AppName.Text = slider3Process.ProcessName;
+            slider3.Enabled = true;
 
             if (slider3Process != null)
             {
@@ -389,6 +563,7 @@ namespace MixLit_Software
                             .FirstOrDefault();
 
             slider4AppName.Text = slider4Process.ProcessName;
+            slider4.Enabled = true;
 
             if (slider4Process != null)
             {
@@ -417,6 +592,7 @@ namespace MixLit_Software
                             .FirstOrDefault();
 
             slider5AppName.Text = slider5Process.ProcessName;
+            slider5.Enabled = true;
 
             if (slider5Process != null)
             {
