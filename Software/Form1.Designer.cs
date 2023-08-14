@@ -49,6 +49,7 @@
             slider4AppSelect = new ComboBox();
             slider5AppSelect = new ComboBox();
             button1 = new Button();
+            closeAppLabel = new Label();
             ((System.ComponentModel.ISupportInitialize)slider1).BeginInit();
             ((System.ComponentModel.ISupportInitialize)slider2).BeginInit();
             ((System.ComponentModel.ISupportInitialize)slider3).BeginInit();
@@ -337,6 +338,17 @@
             button1.UseVisualStyleBackColor = true;
             button1.Click += button1_Click;
             // 
+            // closeAppLabel
+            // 
+            closeAppLabel.AutoSize = true;
+            closeAppLabel.Font = new Font("nevis", 36F, FontStyle.Bold, GraphicsUnit.Point);
+            closeAppLabel.Location = new Point(737, 9);
+            closeAppLabel.Name = "closeAppLabel";
+            closeAppLabel.Size = new Size(61, 53);
+            closeAppLabel.TabIndex = 21;
+            closeAppLabel.Text = "X";
+            closeAppLabel.Click += closeAppLabel_Click;
+            // 
             // Form1
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
@@ -345,6 +357,7 @@
             BackColor = Color.FromArgb(24, 24, 24);
             BackgroundImageLayout = ImageLayout.None;
             ClientSize = new Size(810, 507);
+            Controls.Add(closeAppLabel);
             Controls.Add(button1);
             Controls.Add(slider5AppSelect);
             Controls.Add(slider4AppSelect);
@@ -406,5 +419,6 @@
         private ComboBox slider4AppSelect;
         private ComboBox slider5AppSelect;
         private Button button1;
+        private Label closeAppLabel;
     }
 }

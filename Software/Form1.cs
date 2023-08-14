@@ -7,6 +7,7 @@ using System.Linq;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Collections.Concurrent;
+using System.Reflection.Emit;
 
 namespace MixLit_Software
 {
@@ -41,6 +42,16 @@ namespace MixLit_Software
         public Form1()
         {
             InitializeComponent();
+
+            closeAppLabel.Text = "X";
+            closeAppLabel.TextAlign = System.Drawing.ContentAlignment.MiddleCenter;
+            closeAppLabel.Font = new Font("Nevis", 28, FontStyle.Bold);
+            closeAppLabel.ForeColor = Color.White;
+            closeAppLabel.BackColor = Color.FromArgb(80, 30, 30, 30);
+            closeAppLabel.Size = new Size(50, 50);
+            closeAppLabel.Location = new Point((ClientSize.Width - closeAppLabel.Size.Width) - 10, 10);
+            closeAppLabel.Visible = true;
+            Controls.Add(closeAppLabel);
 
             this.MouseDown += Form1_MouseDown;
             this.MouseUp += Form1_MouseUp;
@@ -289,15 +300,15 @@ namespace MixLit_Software
             {
                 if (i < sliders.Length && int.TryParse(sliderValues[i], out int sensorValue))
                 {
-                    sliderUpdateQueue.Enqueue(new Tuple<TrackBar, int>(sliders[i - 1], sensorValue));
-                }
-            }
+                    if (sliderBars.TryGetValue(sliders[i], out FlowLayoutPanel bar))
+                    {
+                        bar.Visible = true;
+                    }
 
-            if (!isProcessingQueue)
-            {
-                isProcessingQueue = true;
-                await ProcessSliderQueueAsync();
-                isProcessingQueue = false;
+                    sliders[i].Value = sensorValue;
+                    Slider_Scroll(sliders[i], EventArgs.Empty);
+                    await Task.Delay(10);
+                }
             }
         }
 
@@ -642,6 +653,12 @@ namespace MixLit_Software
         private void SendHardcodedData(string data)
         {
             serialPort.WriteLine(data);
+        }
+
+        private void closeAppLabel_Click(object sender, EventArgs e)
+        {
+            serialPort.Close();
+            this.Close();
         }
     }
 }
