@@ -27,7 +27,7 @@ namespace MixLit_Software
         private System.Timers.Timer rainbowEffectTimer = new System.Timers.Timer();
         private int rainbowColorIndex = 0;
 
-        private const int AnimationInterval = 24;
+        private const int AnimationInterval = 1;
         private const float EasingFactor = 0.1f;
 
         private bool isFollowingMouse = false;
@@ -38,6 +38,7 @@ namespace MixLit_Software
             InitializeComponent();
 
             this.MouseDown += Form1_MouseDown;
+            this.MouseUp += Form1_MouseUp;
             //this.MouseMove += Form1_MouseMove;
 
             sliders = new TrackBar[] { slider1, slider2, slider3, slider4, slider5 };
@@ -107,11 +108,6 @@ namespace MixLit_Software
         {
             if (e.Button == MouseButtons.Left)
             {
-                if (isFollowingMouse)
-                {
-                    isFollowingMouse = false;
-                    return;
-                }
 
                 isFollowingMouse = true;
 
@@ -120,6 +116,14 @@ namespace MixLit_Software
                     animationTask = AnimateGlideAsync();
                 }
             }
+        }
+
+        private async void Form1_MouseUp(object sender, MouseEventArgs e)
+        {
+                
+            isFollowingMouse = false;
+            return;
+                
         }
 
         private async Task AnimateGlideAsync()
@@ -131,8 +135,12 @@ namespace MixLit_Software
                 Point targetPosition = Cursor.Position;
                 Point currentPosition = this.Location;
 
-                int dx = (int)((targetPosition.X - currentPosition.X) * EasingFactor);
-                int dy = (int)((targetPosition.Y - currentPosition.Y) * EasingFactor);
+                // Calculate the target position for the top middle part of the window
+                int targetX = targetPosition.X - (this.Width / 2);
+                int targetY = targetPosition.Y;
+
+                int dx = (int)((targetX - currentPosition.X) * EasingFactor);
+                int dy = (int)((targetY - currentPosition.Y) * EasingFactor);
 
                 this.Invoke(new Action(() =>
                 {
