@@ -6,6 +6,7 @@ using NAudio.CoreAudioApi;
 using System.Linq;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Collections.Concurrent;
 
 namespace MixLit_Software
 {
@@ -34,6 +35,9 @@ namespace MixLit_Software
 
         SerialPortStream serialPort = new SerialPortStream("COM11", 115200);
 
+        private ConcurrentQueue<Tuple<TrackBar, int>> sliderUpdateQueue = new ConcurrentQueue<Tuple<TrackBar, int>>();
+        private bool isProcessingQueue = false;
+
         public Form1()
         {
             InitializeComponent();
@@ -43,17 +47,6 @@ namespace MixLit_Software
             //this.MouseMove += Form1_MouseMove;
 
             sliders = new TrackBar[] { slider1, slider2, slider3, slider4, slider5 };
-
-            serialPort.DataReceived += SerialPort_DataReceived;
-
-            try
-            {
-                serialPort.Open();
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show("Error opening serial port: " + ex.Message);
-            }
 
             MMDeviceEnumerator enumerator = new MMDeviceEnumerator();
             MMDevice defaultDevice = enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
@@ -103,6 +96,17 @@ namespace MixLit_Software
             rainbowEffectTimer.Start();
             rainbowEffectTimer.Elapsed += RainbowEffectTimer_Tick;
 
+            serialPort.DataReceived += SerialPort_DataReceived;
+
+            try
+            {
+                serialPort.Open();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show("Error opening serial port: " + ex.Message);
+            }
+
         }
 
         private async void Form1_MouseDown(object sender, MouseEventArgs e)
@@ -136,7 +140,6 @@ namespace MixLit_Software
                 Point targetPosition = Cursor.Position;
                 Point currentPosition = this.Location;
 
-                // Calculate the target position for the top middle part of the window
                 int targetX = targetPosition.X - (this.Width / 2);
                 int targetY = targetPosition.Y;
 
@@ -277,34 +280,46 @@ namespace MixLit_Software
                 return null;
         }
 
-        private void SerialPort_DataReceived(object sender, SerialDataReceivedEventArgs e)
+        private async void SerialPort_DataReceived(object sender, SerialDataReceivedEventArgs e)
         {
             string data = serialPort.ReadLine();
             string[] sliderValues = data.Split('|');
 
-            for (int i = 0; i < sliderValues.Length; i++)
+            for (int i = 0; i < sliderValues.Length - 1; i++)
             {
                 if (i < sliders.Length && int.TryParse(sliderValues[i], out int sensorValue))
                 {
-                    BeginInvoke(new Action(() =>
-                    {
-                        SimulateSliderScroll(sliders[i - 1], sensorValue);
-                    }));
+                    sliderUpdateQueue.Enqueue(new Tuple<TrackBar, int>(sliders[i - 1], sensorValue));
                 }
+            }
+
+            if (!isProcessingQueue)
+            {
+                isProcessingQueue = true;
+                await ProcessSliderQueueAsync();
+                isProcessingQueue = false;
+            }
+        }
+
+        private async Task ProcessSliderQueueAsync()
+        {
+            while (sliderUpdateQueue.TryDequeue(out var update))
+            {
+                await Task.Delay(10);
+                SimulateSliderScroll(update.Item1, update.Item2);
             }
         }
 
         private void SimulateSliderScroll(TrackBar slider, int sensorValue)
         {
-
             if (slider != null)
             {
-
-                slider.Value = sensorValue;
-                Slider_Scroll(slider, EventArgs.Empty);
-
+                BeginInvoke(new Action(() =>
+                {
+                    slider.Value = sensorValue;
+                    Slider_Scroll(slider, EventArgs.Empty);
+                }));
             }
-
         }
 
         private void AdjustVolumeForSlider(int sliderIndex, int sensorValue)
