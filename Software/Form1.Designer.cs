@@ -48,6 +48,7 @@
             slider3AppSelect = new ComboBox();
             slider4AppSelect = new ComboBox();
             slider5AppSelect = new ComboBox();
+            button1 = new Button();
             ((System.ComponentModel.ISupportInitialize)slider1).BeginInit();
             ((System.ComponentModel.ISupportInitialize)slider2).BeginInit();
             ((System.ComponentModel.ISupportInitialize)slider3).BeginInit();
@@ -326,6 +327,16 @@
             slider5AppSelect.TabIndex = 19;
             slider5AppSelect.SelectedIndexChanged += slider5AppSelect_SelectedIndexChanged;
             // 
+            // button1
+            // 
+            button1.Location = new Point(355, 472);
+            button1.Name = "button1";
+            button1.Size = new Size(75, 23);
+            button1.TabIndex = 20;
+            button1.Text = "send data";
+            button1.UseVisualStyleBackColor = true;
+            button1.Click += button1_Click;
+            // 
             // Form1
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
@@ -333,7 +344,8 @@
             AutoSizeMode = AutoSizeMode.GrowAndShrink;
             BackColor = Color.FromArgb(24, 24, 24);
             BackgroundImageLayout = ImageLayout.None;
-            ClientSize = new Size(810, 487);
+            ClientSize = new Size(810, 507);
+            Controls.Add(button1);
             Controls.Add(slider5AppSelect);
             Controls.Add(slider4AppSelect);
             Controls.Add(slider3AppSelect);
@@ -393,5 +405,6 @@
         private ComboBox slider3AppSelect;
         private ComboBox slider4AppSelect;
         private ComboBox slider5AppSelect;
+        private Button button1;
     }
 }

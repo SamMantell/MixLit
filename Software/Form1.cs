@@ -11,7 +11,6 @@ namespace MixLit_Software
 {
     public partial class Form1 : Form
     {
-        private RJCP.IO.Ports.SerialPortStream serialPort;
         private TrackBar[] sliders;
         private Dictionary<TrackBar, Tuple<Process, List<int>>> sliderProcesses = new Dictionary<TrackBar, Tuple<Process, List<int>>>();
         private Dictionary<TrackBar, FlowLayoutPanel> sliderBars = new Dictionary<TrackBar, FlowLayoutPanel>();
@@ -33,6 +32,8 @@ namespace MixLit_Software
         private bool isFollowingMouse = false;
         private Task animationTask;
 
+        SerialPortStream serialPort = new SerialPortStream("COM11", 115200);
+
         public Form1()
         {
             InitializeComponent();
@@ -43,8 +44,8 @@ namespace MixLit_Software
 
             sliders = new TrackBar[] { slider1, slider2, slider3, slider4, slider5 };
 
-            serialPort = new SerialPortStream("COM11", 115200);
             serialPort.DataReceived += SerialPort_DataReceived;
+
             try
             {
                 serialPort.Open();
@@ -120,10 +121,10 @@ namespace MixLit_Software
 
         private async void Form1_MouseUp(object sender, MouseEventArgs e)
         {
-                
+
             isFollowingMouse = false;
             return;
-                
+
         }
 
         private async Task AnimateGlideAsync()
@@ -281,38 +282,53 @@ namespace MixLit_Software
             string data = serialPort.ReadLine();
             string[] sliderValues = data.Split('|');
 
-            for (int i = 0; i < sliderValues.Length - 1; i++)
+            for (int i = 0; i < sliderValues.Length; i++)
             {
                 if (i < sliders.Length && int.TryParse(sliderValues[i], out int sensorValue))
                 {
                     BeginInvoke(new Action(() =>
                     {
-                        sliders[i].Value = sensorValue;
-                        AdjustVolumeForSlider(i, sensorValue);
+                        SimulateSliderScroll(sliders[i - 1], sensorValue);
                     }));
                 }
             }
+        }
+
+        private void SimulateSliderScroll(TrackBar slider, int sensorValue)
+        {
+
+            if (slider != null)
+            {
+
+                slider.Value = sensorValue;
+                Slider_Scroll(slider, EventArgs.Empty);
+
+            }
+
         }
 
         private void AdjustVolumeForSlider(int sliderIndex, int sensorValue)
         {
             try
             {
-                float sliderValue = (float)sensorValue / sliders[sliderIndex].Maximum;
+                float sliderValue = (float)sensorValue / 1024;
                 MMDeviceEnumerator enumerator = new MMDeviceEnumerator();
                 MMDevice defaultDevice = enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
 
-                foreach (var kvp in sliderProcesses)
+                var sessions = defaultDevice.AudioSessionManager.Sessions;
+
+                Parallel.ForEach(sliderProcesses, kvp =>
                 {
                     TrackBar slider = kvp.Key;
                     Process sliderProcess = kvp.Value.Item1;
 
                     if (sliderProcess != null)
                     {
-                        int sessionCount = defaultDevice.AudioSessionManager.Sessions.Count;
-                        for (int i = 0; i < sessionCount; i++)
+                        var processId = (int)sliderProcess.Id;
+
+                        for (int i = 0; i < sessions.Count; i++)
                         {
-                            var session = defaultDevice.AudioSessionManager.Sessions[i];
+                            var session = sessions[i];
                             if (kvp.Value.Item2.Contains((int)session.GetProcessID))
                             {
                                 session.SimpleAudioVolume.Volume = sliderValue;
@@ -320,30 +336,11 @@ namespace MixLit_Software
                             }
                         }
                     }
-                }
+                });
             }
             catch (Exception ex)
             {
                 Console.Write(ex.ToString());
-            }
-        }
-
-        private Process GetSliderProcess(int sliderIndex)
-        {
-            switch (sliderIndex)
-            {
-                case 0:
-                    return slider1Process;
-                case 1:
-                    return slider2Process;
-                case 2:
-                    return slider3Process;
-                case 3:
-                    return slider4Process;
-                case 4:
-                    return slider5Process;
-                default:
-                    return null;
             }
         }
 
@@ -620,6 +617,16 @@ namespace MixLit_Software
                 slider5Icon.SizeMode = PictureBoxSizeMode.Normal;
                 slider5Icon.Image = null;
             }
+        }
+
+        private void button1_Click(object sender, EventArgs e)
+        {
+            SendHardcodedData("1024|1024|1024|1024|1024");
+        }
+
+        private void SendHardcodedData(string data)
+        {
+            serialPort.WriteLine(data);
         }
     }
 }
