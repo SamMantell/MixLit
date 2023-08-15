@@ -16,7 +16,6 @@ namespace MixLit_Software
         private TrackBar[] sliders;
         private Dictionary<TrackBar, Tuple<Process, List<int>>> sliderProcesses = new Dictionary<TrackBar, Tuple<Process, List<int>>>();
         private Dictionary<TrackBar, FlowLayoutPanel> sliderBars = new Dictionary<TrackBar, FlowLayoutPanel>();
-        private MMDeviceEnumerator deviceEnumerator;
         private Process slider1Process;
         private Process slider2Process;
         private Process slider3Process;
@@ -133,7 +132,7 @@ namespace MixLit_Software
             }
 
             faderUpdateTimer = new System.Timers.Timer();
-            faderUpdateTimer.Interval = 5; // Adjust the interval as needed
+            faderUpdateTimer.Interval = 5;
             faderUpdateTimer.Elapsed += FaderUpdateTimer_Tick;
             faderUpdateTimer.Start();
 
@@ -141,22 +140,24 @@ namespace MixLit_Software
 
         private void FaderUpdateTimer_Tick(object sender, EventArgs e)
         {
-            // Update the sliders with fader values
-            UpdateSliderValue(slider1, fader1.Maximum - fader1.Value);
-            UpdateSliderValue(slider2, fader2.Maximum - fader2.Value);
-            UpdateSliderValue(slider3, fader3.Maximum - fader3.Value);
-            UpdateSliderValue(slider4, fader4.Maximum - fader4.Value);
-            UpdateSliderValue(slider5, fader5.Maximum - fader5.Value);
+            UpdateSliderValueAndExecuteEvent(slider1, fader1.Maximum - fader1.Value);
+            UpdateSliderValueAndExecuteEvent(slider2, fader2.Maximum - fader2.Value);
+            UpdateSliderValueAndExecuteEvent(slider3, fader3.Maximum - fader3.Value);
+            UpdateSliderValueAndExecuteEvent(slider4, fader4.Maximum - fader4.Value);
+            UpdateSliderValueAndExecuteEvent(slider5, fader5.Maximum - fader5.Value);
         }
 
-        private void UpdateSliderValue(TrackBar slider, int value)
+        private void UpdateSliderValueAndExecuteEvent(TrackBar slider, int value)
         {
-            // Ensure the value is within the slider's range
             value = Math.Min(slider.Maximum, Math.Max(slider.Minimum, value));
 
             slider.BeginInvoke(new Action(() =>
             {
-                slider.Value = value;
+                if (slider.Value != value)
+                {
+                    slider.Value = value;
+                    Slider_Scroll(slider, EventArgs.Empty);
+                }
             }));
         }
 
@@ -318,11 +319,7 @@ namespace MixLit_Software
             {
                 sliderChanging[slider] = false;
 
-                // Adjust volume for flipped scale
-
                 int sensorValue = slider.Value;
-
-                AdjustVolumeForSlider(slider.Value, sensorValue);
 
                 await Task.Run(() =>
                 {
@@ -333,6 +330,8 @@ namespace MixLit_Software
                 {
                     bar.Visible = true;
                 }
+
+                AdjustVolumeForSlider(slider, sensorValue);
             }
         }
 
@@ -363,7 +362,7 @@ namespace MixLit_Software
                 {
                     if (sliderBars.TryGetValue(sliders[i], out FlowLayoutPanel bar))
                     {
-                        // Use Control.Invoke to update UI elements
+                        // Use a different thread for UI control to seperate functionality and feedback for responsiveness hopefully
                         bar.BeginInvoke(new Action(() => bar.Visible = true));
                     }
 
@@ -378,7 +377,7 @@ namespace MixLit_Software
             }
         }
 
-        private void AdjustVolumeForSlider(int sliderIndex, int sensorValue)
+        private void AdjustVolumeForSlider(TrackBar slider, int sensorValue)
         {
             try
             {
@@ -388,32 +387,29 @@ namespace MixLit_Software
 
                 var sessions = defaultDevice.AudioSessionManager.Sessions;
 
-                Parallel.ForEach(sliderProcesses, kvp =>
+                var sliderProcessTuple = sliderProcesses[slider];
+                Process sliderProcess = sliderProcessTuple.Item1;
+
+                if (sliderProcess != null)
                 {
-                    TrackBar slider = kvp.Key;
-                    Process sliderProcess = kvp.Value.Item1;
+                    var processIds = sliderProcessTuple.Item2;
 
-                    if (sliderProcess != null)
+                    for (int i = 0; i < sessions.Count; i++)
                     {
-                        var processId = (int)sliderProcess.Id;
-
-                        for (int i = 0; i < sessions.Count; i++)
+                        var session = sessions[i];
+                        if (processIds.Contains((int)session.GetProcessID))
                         {
-                            var session = sessions[i];
-                            if (kvp.Value.Item2.Contains((int)session.GetProcessID))
-                            {
-                                session.SimpleAudioVolume.Volume = sliderValue;
-                                break;
-                            }
+                            session.SimpleAudioVolume.Volume = sliderValue;
                         }
                     }
-                });
+                }
             }
             catch (Exception ex)
             {
-                Console.Write(ex.ToString());
+                Console.WriteLine(ex.ToString());
             }
         }
+
 
         private void slider1_Scroll(object sender, EventArgs e)
         {
@@ -708,7 +704,7 @@ namespace MixLit_Software
 
         private async Task AnimateLabelAppearance(System.Windows.Forms.Label label, Color targetBackColor, Font targetFont)
         {
-            const int AnimationDuration = 200; // in milliseconds
+            const int AnimationDuration = 200;
             const int AnimationSteps = 20;
 
             Color startColor = label.BackColor;
