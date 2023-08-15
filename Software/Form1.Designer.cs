@@ -48,8 +48,12 @@
             slider3AppSelect = new ComboBox();
             slider4AppSelect = new ComboBox();
             slider5AppSelect = new ComboBox();
-            button1 = new Button();
             closeAppLabel = new Label();
+            fader1 = new NAudio.Gui.Fader();
+            fader2 = new NAudio.Gui.Fader();
+            fader3 = new NAudio.Gui.Fader();
+            fader4 = new NAudio.Gui.Fader();
+            fader5 = new NAudio.Gui.Fader();
             ((System.ComponentModel.ISupportInitialize)slider1).BeginInit();
             ((System.ComponentModel.ISupportInitialize)slider2).BeginInit();
             ((System.ComponentModel.ISupportInitialize)slider3).BeginInit();
@@ -328,16 +332,6 @@
             slider5AppSelect.TabIndex = 19;
             slider5AppSelect.SelectedIndexChanged += slider5AppSelect_SelectedIndexChanged;
             // 
-            // button1
-            // 
-            button1.Location = new Point(355, 472);
-            button1.Name = "button1";
-            button1.Size = new Size(75, 23);
-            button1.TabIndex = 20;
-            button1.Text = "send data";
-            button1.UseVisualStyleBackColor = true;
-            button1.Click += button1_Click;
-            // 
             // closeAppLabel
             // 
             closeAppLabel.AutoSize = true;
@@ -347,7 +341,70 @@
             closeAppLabel.Size = new Size(61, 53);
             closeAppLabel.TabIndex = 21;
             closeAppLabel.Text = "X";
+            closeAppLabel.TextAlign = ContentAlignment.MiddleCenter;
             closeAppLabel.Click += closeAppLabel_Click;
+            // 
+            // fader1
+            // 
+            fader1.ImeMode = ImeMode.NoControl;
+            fader1.Location = new Point(98, 162);
+            fader1.Maximum = 1024;
+            fader1.Minimum = 0;
+            fader1.Name = "fader1";
+            fader1.Orientation = Orientation.Vertical;
+            fader1.RightToLeft = RightToLeft.Yes;
+            fader1.Size = new Size(45, 248);
+            fader1.TabIndex = 22;
+            fader1.Text = "fader1";
+            fader1.Value = 1024;
+            // 
+            // fader2
+            // 
+            fader2.Location = new Point(241, 162);
+            fader2.Maximum = 1024;
+            fader2.Minimum = 0;
+            fader2.Name = "fader2";
+            fader2.Orientation = Orientation.Vertical;
+            fader2.Size = new Size(45, 248);
+            fader2.TabIndex = 23;
+            fader2.Text = "fader1";
+            fader2.Value = 1024;
+            // 
+            // fader3
+            // 
+            fader3.Location = new Point(378, 162);
+            fader3.Maximum = 1024;
+            fader3.Minimum = 0;
+            fader3.Name = "fader3";
+            fader3.Orientation = Orientation.Vertical;
+            fader3.Size = new Size(45, 248);
+            fader3.TabIndex = 24;
+            fader3.Text = "fader1";
+            fader3.Value = 1024;
+            // 
+            // fader4
+            // 
+            fader4.Location = new Point(517, 162);
+            fader4.Maximum = 1024;
+            fader4.Minimum = 0;
+            fader4.Name = "fader4";
+            fader4.Orientation = Orientation.Vertical;
+            fader4.Size = new Size(45, 248);
+            fader4.TabIndex = 25;
+            fader4.Text = "fader1";
+            fader4.Value = 1024;
+            // 
+            // fader5
+            // 
+            fader5.Location = new Point(656, 162);
+            fader5.Maximum = 1024;
+            fader5.Minimum = 0;
+            fader5.Name = "fader5";
+            fader5.Orientation = Orientation.Vertical;
+            fader5.Size = new Size(45, 248);
+            fader5.TabIndex = 26;
+            fader5.Text = "fader2";
+            fader5.Value = 1024;
             // 
             // Form1
             // 
@@ -356,9 +413,13 @@
             AutoSizeMode = AutoSizeMode.GrowAndShrink;
             BackColor = Color.FromArgb(24, 24, 24);
             BackgroundImageLayout = ImageLayout.None;
-            ClientSize = new Size(810, 507);
+            ClientSize = new Size(810, 528);
+            Controls.Add(fader5);
+            Controls.Add(fader4);
+            Controls.Add(fader3);
+            Controls.Add(fader2);
+            Controls.Add(fader1);
             Controls.Add(closeAppLabel);
-            Controls.Add(button1);
             Controls.Add(slider5AppSelect);
             Controls.Add(slider4AppSelect);
             Controls.Add(slider3AppSelect);
@@ -379,6 +440,7 @@
             Controls.Add(slider3);
             Controls.Add(slider2);
             Controls.Add(slider1);
+            DoubleBuffered = true;
             FormBorderStyle = FormBorderStyle.None;
             Name = "Form1";
             Text = "MixLit Software";
@@ -397,7 +459,6 @@
         }
 
         #endregion
-
         private TrackBar slider1;
         private TrackBar slider2;
         private TrackBar slider3;
@@ -418,7 +479,11 @@
         private ComboBox slider3AppSelect;
         private ComboBox slider4AppSelect;
         private ComboBox slider5AppSelect;
-        private Button button1;
         private Label closeAppLabel;
+        private NAudio.Gui.Fader fader1;
+        private NAudio.Gui.Fader fader2;
+        private NAudio.Gui.Fader fader3;
+        private NAudio.Gui.Fader fader4;
+        private NAudio.Gui.Fader fader5;
     }
 }

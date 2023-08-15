@@ -23,6 +23,8 @@ namespace MixLit_Software
         private Process slider4Process;
         private Process slider5Process;
 
+        private System.Timers.Timer faderUpdateTimer;
+
         private Dictionary<TrackBar, bool> sliderChanging = new Dictionary<TrackBar, bool>();
         private System.Timers.Timer colorTransitionTimer = new System.Timers.Timer();
         private System.Timers.Timer rainbowEffectTimer = new System.Timers.Timer();
@@ -39,6 +41,12 @@ namespace MixLit_Software
         private ConcurrentQueue<Tuple<TrackBar, int>> sliderUpdateQueue = new ConcurrentQueue<Tuple<TrackBar, int>>();
         private bool isProcessingQueue = false;
 
+        private Color originalBackColor;
+        private Color hoverBackColor = Color.FromArgb(100, 50, 50, 50);
+
+        private Font originalFont;
+        private Font hoverFont = new Font("Nevis", 30, FontStyle.Bold);
+
         public Form1()
         {
             InitializeComponent();
@@ -51,11 +59,11 @@ namespace MixLit_Software
             closeAppLabel.Size = new Size(50, 50);
             closeAppLabel.Location = new Point((ClientSize.Width - closeAppLabel.Size.Width) - 10, 10);
             closeAppLabel.Visible = true;
+            closeAppLabel.Anchor = AnchorStyles.Top;
             Controls.Add(closeAppLabel);
 
             this.MouseDown += Form1_MouseDown;
             this.MouseUp += Form1_MouseUp;
-            //this.MouseMove += Form1_MouseMove;
 
             sliders = new TrackBar[] { slider1, slider2, slider3, slider4, slider5 };
 
@@ -86,7 +94,7 @@ namespace MixLit_Software
 
             foreach (var slider in sliders)
             {
-                slider.Scroll += Slider_Scroll;
+                slider.ValueChanged += Slider_Scroll;
                 FlowLayoutPanel bar = CreateSliderBar();
                 sliderBars[slider] = bar;
                 bar.Visible = false;
@@ -109,6 +117,12 @@ namespace MixLit_Software
 
             serialPort.DataReceived += SerialPort_DataReceived;
 
+            closeAppLabel.MouseEnter += CloseAppLabel_MouseEnter;
+            closeAppLabel.MouseLeave += CloseAppLabel_MouseLeave;
+
+            originalBackColor = closeAppLabel.BackColor;
+            originalFont = closeAppLabel.Font;
+
             try
             {
                 serialPort.Open();
@@ -118,6 +132,32 @@ namespace MixLit_Software
                 MessageBox.Show("Error opening serial port: " + ex.Message);
             }
 
+            faderUpdateTimer = new System.Timers.Timer();
+            faderUpdateTimer.Interval = 5; // Adjust the interval as needed
+            faderUpdateTimer.Elapsed += FaderUpdateTimer_Tick;
+            faderUpdateTimer.Start();
+
+        }
+
+        private void FaderUpdateTimer_Tick(object sender, EventArgs e)
+        {
+            // Update the sliders with fader values
+            UpdateSliderValue(slider1, fader1.Maximum - fader1.Value);
+            UpdateSliderValue(slider2, fader2.Maximum - fader2.Value);
+            UpdateSliderValue(slider3, fader3.Maximum - fader3.Value);
+            UpdateSliderValue(slider4, fader4.Maximum - fader4.Value);
+            UpdateSliderValue(slider5, fader5.Maximum - fader5.Value);
+        }
+
+        private void UpdateSliderValue(TrackBar slider, int value)
+        {
+            // Ensure the value is within the slider's range
+            value = Math.Min(slider.Maximum, Math.Max(slider.Minimum, value));
+
+            slider.BeginInvoke(new Action(() =>
+            {
+                slider.Value = value;
+            }));
         }
 
         private async void Form1_MouseDown(object sender, MouseEventArgs e)
@@ -152,7 +192,7 @@ namespace MixLit_Software
                 Point currentPosition = this.Location;
 
                 int targetX = targetPosition.X - (this.Width / 2);
-                int targetY = targetPosition.Y;
+                int targetY = targetPosition.Y - (this.Height / 2);
 
                 int dx = (int)((targetX - currentPosition.X) * EasingFactor);
                 int dy = (int)((targetY - currentPosition.Y) * EasingFactor);
@@ -165,31 +205,34 @@ namespace MixLit_Software
         }
 
 
-        private void ColorTransitionTimer_Tick(object sender, EventArgs e)
+        private async void ColorTransitionTimer_Tick(object sender, EventArgs e)
         {
             foreach (var slider in sliders)
             {
                 if (sliderChanging[slider])
                 {
-                    BeginInvoke(new Action(() =>
+                    await Task.Run(() =>
                     {
                         int sensorValue = slider.Value;
                         UpdateSliderBar(slider, sensorValue);
-                    }));
+                    });
                 }
             }
         }
 
-        private void RainbowEffectTimer_Tick(object sender, EventArgs e)
+        private async void RainbowEffectTimer_Tick(object sender, EventArgs e)
         {
-            rainbowColorIndex = (rainbowColorIndex + 1) % 360;
-            Color rainbowColor = ColorFromHSV(rainbowColorIndex, 1, 1);
-
-            foreach (var kvp in sliderBars)
+            await Task.Run(() =>
             {
-                FlowLayoutPanel bar = kvp.Value;
-                bar.BackColor = rainbowColor;
-            }
+                rainbowColorIndex = (rainbowColorIndex + 1) % 360;
+                Color rainbowColor = ColorFromHSV(rainbowColorIndex, 1, 1);
+
+                foreach (var kvp in sliderBars)
+                {
+                    FlowLayoutPanel bar = kvp.Value;
+                    bar.BackColor = rainbowColor;
+                }
+            });
         }
 
         private Color ColorFromHSV(int hue, double saturation, double value)
@@ -236,16 +279,26 @@ namespace MixLit_Software
                 {
                     int redValue = (int)(255 * heightPercentage);
                     int greenValue = 255 - redValue;
-                    bar.BackColor = Color.FromArgb(redValue, greenValue, 0);
+
+                    // Marshaling UI update to the UI thread
+                    BeginInvoke(new Action(() =>
+                    {
+                        bar.BackColor = Color.FromArgb(redValue, greenValue, 0);
+                    }));
                 }
                 else
                 {
                     int maxHeight = slider.Height - (bar.Margin.Top + bar.Margin.Bottom) + 10;
-                    int newHeight = (int)EaseInOutCubic(slider.Value, 0, maxHeight, slider.Maximum);
-                    bar.Height = newHeight;
-                    int topOffset = (slider.Height - bar.Height);
-                    bar.Top = slider.Top + topOffset;
-                    bar.Left = (slider.Left + slider.Width + bar.Margin.Left) - slider.Width - 15;
+
+                    // Marshaling UI update to the UI thread
+                    BeginInvoke(new Action(() =>
+                    {
+                        int newHeight = (int)EaseInOutCubic(slider.Value, 0, maxHeight, slider.Maximum);
+                        bar.Height = newHeight;
+                        int topOffset = (slider.Height - bar.Height);
+                        bar.Top = slider.Top + topOffset;
+                        bar.Left = (slider.Left + slider.Width + bar.Margin.Left) - slider.Width - 15;
+                    }));
                 }
             }
         }
@@ -258,15 +311,23 @@ namespace MixLit_Software
             return c / 2 * (t * t * t + 2) + b;
         }
 
-        private void Slider_Scroll(object sender, EventArgs e)
+        private async void Slider_Scroll(object sender, EventArgs e)
         {
             TrackBar slider = sender as TrackBar;
             if (slider != null)
             {
                 sliderChanging[slider] = false;
+
+                // Adjust volume for flipped scale
+
                 int sensorValue = slider.Value;
-                UpdateSliderBar(slider, sensorValue);
+
                 AdjustVolumeForSlider(slider.Value, sensorValue);
+
+                await Task.Run(() =>
+                {
+                    UpdateSliderBar(slider, sensorValue);
+                });
 
                 if (sliderBars.TryGetValue(slider, out FlowLayoutPanel bar))
                 {
@@ -291,7 +352,7 @@ namespace MixLit_Software
                 return null;
         }
 
-        private async void SerialPort_DataReceived(object sender, SerialDataReceivedEventArgs e)
+        private void SerialPort_DataReceived(object sender, SerialDataReceivedEventArgs e)
         {
             string data = serialPort.ReadLine();
             string[] sliderValues = data.Split('|');
@@ -302,34 +363,18 @@ namespace MixLit_Software
                 {
                     if (sliderBars.TryGetValue(sliders[i], out FlowLayoutPanel bar))
                     {
-                        bar.Visible = true;
+                        // Use Control.Invoke to update UI elements
+                        bar.BeginInvoke(new Action(() => bar.Visible = true));
                     }
 
-                    sliders[i].Value = sensorValue;
-                    Slider_Scroll(sliders[i], EventArgs.Empty);
-                    await Task.Delay(10);
+                    sliders[i].BeginInvoke(new Action(() =>
+                    {
+                        sliders[i].Value = sensorValue;
+                        Slider_Scroll(sliders[i], EventArgs.Empty);
+                    }));
+
+                    Thread.Sleep(10);
                 }
-            }
-        }
-
-        private async Task ProcessSliderQueueAsync()
-        {
-            while (sliderUpdateQueue.TryDequeue(out var update))
-            {
-                await Task.Delay(10);
-                SimulateSliderScroll(update.Item1, update.Item2);
-            }
-        }
-
-        private void SimulateSliderScroll(TrackBar slider, int sensorValue)
-        {
-            if (slider != null)
-            {
-                BeginInvoke(new Action(() =>
-                {
-                    slider.Value = sensorValue;
-                    Slider_Scroll(slider, EventArgs.Empty);
-                }));
             }
         }
 
@@ -645,20 +690,59 @@ namespace MixLit_Software
             }
         }
 
-        private void button1_Click(object sender, EventArgs e)
-        {
-            SendHardcodedData("1024|1024|1024|1024|1024");
-        }
-
-        private void SendHardcodedData(string data)
-        {
-            serialPort.WriteLine(data);
-        }
-
         private void closeAppLabel_Click(object sender, EventArgs e)
         {
             serialPort.Close();
             this.Close();
+        }
+
+        private async void CloseAppLabel_MouseEnter(object sender, EventArgs e)
+        {
+            await AnimateLabelAppearance(closeAppLabel, hoverBackColor, hoverFont);
+        }
+
+        private async void CloseAppLabel_MouseLeave(object sender, EventArgs e)
+        {
+            await AnimateLabelAppearance(closeAppLabel, originalBackColor, originalFont);
+        }
+
+        private async Task AnimateLabelAppearance(System.Windows.Forms.Label label, Color targetBackColor, Font targetFont)
+        {
+            const int AnimationDuration = 200; // in milliseconds
+            const int AnimationSteps = 20;
+
+            Color startColor = label.BackColor;
+            Font startFont = label.Font;
+
+            for (int step = 1; step <= AnimationSteps; step++)
+            {
+                float interpolationRatio = (float)step / AnimationSteps;
+                Color interpolatedColor = InterpolateColor(startColor, targetBackColor, interpolationRatio);
+                Font interpolatedFont = InterpolateFont(startFont, targetFont, interpolationRatio);
+
+                label.BackColor = interpolatedColor;
+                label.Font = interpolatedFont;
+
+                await Task.Delay(AnimationDuration / AnimationSteps);
+            }
+
+            label.BackColor = targetBackColor;
+            label.Font = targetFont;
+        }
+
+        private Color InterpolateColor(Color startColor, Color endColor, float interpolationRatio)
+        {
+            int r = (int)Math.Round(startColor.R + (endColor.R - startColor.R) * interpolationRatio);
+            int g = (int)Math.Round(startColor.G + (endColor.G - startColor.G) * interpolationRatio);
+            int b = (int)Math.Round(startColor.B + (endColor.B - startColor.B) * interpolationRatio);
+
+            return Color.FromArgb(r, g, b);
+        }
+
+        private Font InterpolateFont(Font startFont, Font endFont, float interpolationRatio)
+        {
+            float newSize = startFont.Size + (endFont.Size - startFont.Size) * interpolationRatio;
+            return new Font(startFont.FontFamily, newSize, endFont.Style);
         }
     }
 }
