@@ -1,6 +1,6 @@
 #include <Wire.h>
 #include <Adafruit_NeoPixel.h>
-#include "MIDIUSB.h"
+//#include "MIDIUSB.h"
 
 #ifdef __AVR__
 #endif
@@ -10,13 +10,13 @@
 
 Adafruit_NeoPixel pixels(NUMPIXELS, PIN, NEO_GRB + NEO_KHZ800);
 
-const int NumOfSliders = 3;
-const int Sliders[NumOfSliders] = {A0, A1, A2};
+const int NumOfSliders = 8;
+const int Sliders[NumOfSliders] = {A0, A1, A2, A3, A4, A5, A6, A7};
 
 bool deej = true;
 
 int SliderState[NumOfSliders];
-
+/*
 void noteOn(byte channel, byte pitch, byte velocity) {
   midiEventPacket_t noteOn = {0x09, 0x90 | channel, pitch, velocity};
   MidiUSB.sendMIDI(noteOn);
@@ -35,6 +35,7 @@ void controlChange(byte channel, byte control, byte value) {
   midiEventPacket_t event = {0x0B, 0xB0 | channel, control, value};
   MidiUSB.sendMIDI(event);
 }
+*/
 
 
 void setLEDs(float MaxVal, float CurrentVal, int Red, int Green, int Blue, int MaxBrightness, int StartingLED, int EndingLED) {
@@ -80,9 +81,9 @@ void loop() {
       SliderState[i] = analogRead(Sliders[i]);
 
       if (!deej) {
-        controlChange(1, i, SliderState[i]/8);
+        //controlChange(1, i, SliderState[i]/8);
         //Serial.println("controlChange(1, " + String(i) + ", " + String(int(SliderState[i]/8)) + ")");
-        MidiUSB.flush();
+        //MidiUSB.flush();
       }
       else {
         String builtString = String("");
@@ -94,15 +95,13 @@ void loop() {
             builtString += String("|");
           }
         }
-
-        Serial.println(builtString + "|0|0");
       }
 
       if (i==1){
-        setLEDs(1024, SliderState[i], 255, 255, 255, 12, 0, 4);
+        setLEDs(1024, SliderState[i], 255, 255, 255, 255, 0, 4);
       }
     }
   }
   
-  delay(10);
+  //delay(100);
 }
