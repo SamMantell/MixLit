@@ -1,6 +1,6 @@
 #include <Wire.h>
 #include <Adafruit_NeoPixel.h>
-//#include "MIDIUSB.h"
+#include "MIDIUSB.h"
 
 #ifdef __AVR__
 #endif
@@ -10,13 +10,13 @@
 
 Adafruit_NeoPixel pixels(NUMPIXELS, PIN, NEO_GRB + NEO_KHZ800);
 
-const int NumOfSliders = 8;
-const int Sliders[NumOfSliders] = {A0, A1, A2, A3, A4, A5, A6, A7};
+const int NumOfSliders = 5;
+const int Sliders[NumOfSliders] = {A0, A1, A2, A3, A4};
 
-bool deej = true;
+bool deej = false;
 
 int SliderState[NumOfSliders];
-/*
+
 void noteOn(byte channel, byte pitch, byte velocity) {
   midiEventPacket_t noteOn = {0x09, 0x90 | channel, pitch, velocity};
   MidiUSB.sendMIDI(noteOn);
@@ -35,7 +35,7 @@ void controlChange(byte channel, byte control, byte value) {
   midiEventPacket_t event = {0x0B, 0xB0 | channel, control, value};
   MidiUSB.sendMIDI(event);
 }
-*/
+
 
 
 void setLEDs(float MaxVal, float CurrentVal, int Red, int Green, int Blue, int MaxBrightness, int StartingLED, int EndingLED) {
@@ -81,20 +81,28 @@ void loop() {
       SliderState[i] = analogRead(Sliders[i]);
 
       if (!deej) {
-        //controlChange(1, i, SliderState[i]/8);
-        //Serial.println("controlChange(1, " + String(i) + ", " + String(int(SliderState[i]/8)) + ")");
-        //MidiUSB.flush();
+        controlChange(1, i, 128 - int(SliderState[i])/8);
+        Serial.println("controlChange(1, " + String(i) + ", " + String(128 - int(SliderState[i]/8)) + ")");
+        MidiUSB.flush();
       }
       else {
         String builtString = String("");
 
         for (int i = 0; i < NumOfSliders; i++) {
-          builtString += String((int)SliderState[i]);
+          
+          if (i==5){
+            builtString += String((int)SliderState[i]);
+          }
+          else{
+            builtString += String((int)SliderState[i]);
+          }
 
           if (i < NumOfSliders - 1) {
             builtString += String("|");
           }
         }
+
+        Serial.println(builtString);
       }
 
       if (i==1){
@@ -103,5 +111,5 @@ void loop() {
     }
   }
   
-  //delay(100);
+  delay(50);
 }
