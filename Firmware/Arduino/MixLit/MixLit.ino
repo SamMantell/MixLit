@@ -17,6 +17,9 @@ bool deej = false;
 
 int SliderState[NumOfSliders];
 
+int NumToSendToVoiceMeter;
+float VoiceMeterOutput;
+
 void noteOn(byte channel, byte pitch, byte velocity) {
   midiEventPacket_t noteOn = {0x09, 0x90 | channel, pitch, velocity};
   MidiUSB.sendMIDI(noteOn);
@@ -34,6 +37,13 @@ void controlChange(byte channel, byte control, byte value) {
   // Fourth parameter is the control value (0-127).
   midiEventPacket_t event = {0x0B, 0xB0 | channel, control, value};
   MidiUSB.sendMIDI(event);
+}
+
+void RoundTo(float num, int dp) {
+  float number = num * 10;
+  number = int(number);
+  number = float(number / 10);
+  return number;
 }
 
 
@@ -64,10 +74,9 @@ bool SliderChanged(int Slider, int SliderValue, int SliderPrevValue){
 }
 
 void setup() {
+  pixels.begin();
 
   Serial.begin(115200);
-
-  pixels.begin();
 
   while (!Serial) {
     delay(10);
@@ -81,8 +90,11 @@ void loop() {
       SliderState[i] = analogRead(Sliders[i]);
 
       if (!deej) {
-        controlChange(1, i, 127 - int(SliderState[i])/8);
-        Serial.println("controlChange(1, " + String(i) + ", " + String(127 - int(SliderState[i]/8)) + ")");
+        NumToSendToVoiceMeter = 127 - int(SliderState[i])/8;
+        controlChange(1, i, NumToSendToVoiceMeter);
+        //Serial.println("controlChange(1, " + String(i) + ", " + String(127 - int(SliderState[i]/8)) + ")");
+        //Serial.println(float(round(VoiceMeterOutput*10))/10);
+        VoiceMeterOutput = (127 - int(SliderState[i]/8)) * 0.5669 - 60;
         MidiUSB.flush();
       }
       else {
