@@ -6,7 +6,7 @@
 #endif
 
 #define PIN 3
-#define NUMPIXELS 4
+#define NUMPIXELS 8
 
 Adafruit_NeoPixel pixels(NUMPIXELS, PIN, NEO_GRB + NEO_KHZ800);
 
@@ -65,6 +65,7 @@ void setLEDs(float MaxVal, float CurrentVal, int Red, int Green, int Blue, int M
       pixels.setPixelColor(i, pixels.Color(Red * FinalLEDBrightness, Green * FinalLEDBrightness, Blue * FinalLEDBrightness));
     }
     pixels.show();
+    Serial.println("data send to LEDs");
   }
 }
 
@@ -86,7 +87,7 @@ void setup() {
 void loop() {
   for (int i = 0; i < NumOfSliders; i++){
     if (SliderChanged(i, analogRead(Sliders[i]), SliderState[i])){
-      //Serial.println("Slider " + String(i) + " Changed from " + String(SliderState[i]) + " to " + String(analogRead(Sliders[i])));
+      Serial.println("Slider " + String(i) + " Changed from " + String(SliderState[i]) + " to " + String(analogRead(Sliders[i])));
       SliderState[i] = analogRead(Sliders[i]);
 
       if (!deej) {
@@ -118,7 +119,7 @@ void loop() {
       }
 
       if (i==1){
-        setLEDs(1024, SliderState[i], 255, 255, 255, 255, 0, 4);
+        setLEDs(1024, SliderState[i], 138, 43, 226, 64, 0, 8);
       }
     }
   }
