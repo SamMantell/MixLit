@@ -13,6 +13,9 @@ GitHub: @SamMantell, @Goddeh1
 #include <FastLED.h>
 #include <MIDIUSB.h>
 
+#ifdef __AVR__
+#endif
+
 #define NUM_OF_LED_STRIPS 5
 #define NUM_OF_LEDS_PER_STRIP 8
 
@@ -32,7 +35,7 @@ CRGB leds[NUM_OF_LED_STRIPS][NUM_OF_LEDS_PER_STRIP];
 
 void setLEDs(int iCurrentValue, uint8_t red, uint8_t green, uint8_t blue, int ledStrip)
 {
-  uint16_t NewColorIndex = colorIndex + ledStrip*51;
+  uint16_t NewColorIndex = colorIndex + ledStrip*2;
   uint8_t iNumOfLedsOn = iCurrentValue >> 7;
   uint8_t iFinalLedBrightness = (iCurrentValue % 128) << 1;
 
@@ -58,6 +61,16 @@ void setLEDs(int iCurrentValue, uint8_t red, uint8_t green, uint8_t blue, int le
   FastLED.show();
 }
 
+void controlChange(byte channel, byte control, byte value) {
+  // First parameter is the event type (0x0B = control change).
+  // Second parameter is the event type, combined with the channel.
+  // Third parameter is the control number number (0-119).
+  // Fourth parameter is the control value (0-127).
+  midiEventPacket_t event = {0x0B, 0xB0 | channel, control, value};
+  MidiUSB.sendMIDI(event);
+}
+
+
 void setup()
 {
 
@@ -65,13 +78,14 @@ void setup()
     delay(10);
   }
 
+  //Wired the LEDs wrong should be 7, 6, 5, 4, 3
   FastLED.addLeds<NEOPIXEL, 7>(leds[0], NUM_OF_LEDS_PER_STRIP).setCorrection( TypicalLEDStrip );
   FastLED.addLeds<NEOPIXEL, 5>(leds[1], NUM_OF_LEDS_PER_STRIP).setCorrection( TypicalLEDStrip );
   FastLED.addLeds<NEOPIXEL, 6>(leds[2], NUM_OF_LEDS_PER_STRIP).setCorrection( TypicalLEDStrip );
   FastLED.addLeds<NEOPIXEL, 4>(leds[3], NUM_OF_LEDS_PER_STRIP).setCorrection( TypicalLEDStrip );
   FastLED.addLeds<NEOPIXEL, 3>(leds[4], NUM_OF_LEDS_PER_STRIP).setCorrection( TypicalLEDStrip );
 
-  FastLED.setBrightness(64);
+  FastLED.setBrightness(32);
 }
 
 void loop()
@@ -83,8 +97,6 @@ void loop()
 
     SliderState[i] = analogRead(Sliders[i]);
 
-    int reversedValue = 1023 - SliderState[i];
-
     int diff = abs(SliderState[i] - prevSliderState[i]);
 
     setLEDs(SliderState[i], 10, 10, 10, i);
@@ -93,12 +105,15 @@ void loop()
     {
       prevSliderState[i] = SliderState[i];
 
-      builtString += String(SliderIDs[i]) + String(i + 1) + "|" + String(reversedValue);
+      builtString += String(SliderIDs[i]) + String(i + 1) + "|" + String(SliderState[i]);
 
       if (i != NumOfSliders - 1)
       {
         builtString += String("|");
       }
+
+      controlChange(1, i, (SliderState[i] >> 3));
+      MidiUSB.flush();
     }
   }
 
