@@ -33,9 +33,19 @@ int blue = 0;
 
 CRGB leds[NUM_OF_LED_STRIPS][NUM_OF_LEDS_PER_STRIP];
 
+extern const TProgmemRGBPalette16 WhiteColor_p FL_PROGMEM =
+{
+  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF,
+  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF,
+  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF,
+  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF
+};
+
+CRGBPalette16 ColourPaletteToUse = WhiteColor_p;
+
 void setLEDs(int iCurrentValue, uint8_t red, uint8_t green, uint8_t blue, int ledStrip)
 {
-  uint16_t NewColorIndex = colorIndex + ledStrip*2;
+  uint16_t NewColorIndex = colorIndex + ledStrip*51;
   uint8_t iNumOfLedsOn = iCurrentValue >> 7;
   uint8_t iFinalLedBrightness = (iCurrentValue % 128) << 1;
 
@@ -43,18 +53,15 @@ void setLEDs(int iCurrentValue, uint8_t red, uint8_t green, uint8_t blue, int le
   {
     if (i == (7 - iNumOfLedsOn))
     {
-      leds[ledStrip][i] = ColorFromPalette( OceanColors_p , NewColorIndex, iFinalLedBrightness, LINEARBLEND);
-      //leds[ledStrip][i] = CRGB(iFinalLedBrightness, iFinalLedBrightness, iFinalLedBrightness);
+      leds[ledStrip][i] = ColorFromPalette( ColourPaletteToUse , NewColorIndex, iFinalLedBrightness, LINEARBLEND);
     }
     else if (i > (7 - iNumOfLedsOn))
     {
-      leds[ledStrip][i] = ColorFromPalette( OceanColors_p , NewColorIndex, 255, LINEARBLEND);
-      //leds[ledStrip][i] = CRGB(red, green, blue);
+      leds[ledStrip][i] = ColorFromPalette( ColourPaletteToUse , NewColorIndex, 255, LINEARBLEND);
     }
     else
     {
-      leds[ledStrip][i] = ColorFromPalette( OceanColors_p , NewColorIndex, 0, LINEARBLEND);
-      //leds[ledStrip][i] = CRGB(0, 0, 0);
+      leds[ledStrip][i] = ColorFromPalette( ColourPaletteToUse , NewColorIndex, 0, LINEARBLEND);
     }
   }
 
@@ -62,10 +69,6 @@ void setLEDs(int iCurrentValue, uint8_t red, uint8_t green, uint8_t blue, int le
 }
 
 void controlChange(byte channel, byte control, byte value) {
-  // First parameter is the event type (0x0B = control change).
-  // Second parameter is the event type, combined with the channel.
-  // Third parameter is the control number number (0-119).
-  // Fourth parameter is the control value (0-127).
   midiEventPacket_t event = {0x0B, 0xB0 | channel, control, value};
   MidiUSB.sendMIDI(event);
 }
