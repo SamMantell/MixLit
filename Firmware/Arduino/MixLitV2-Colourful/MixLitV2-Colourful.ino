@@ -33,7 +33,7 @@ int blue = 0;
 
 CRGB leds[NUM_OF_LED_STRIPS][NUM_OF_LEDS_PER_STRIP];
 
-extern const TProgmemRGBPalette16 WhiteColor_p FL_PROGMEM =
+extern const TProgmemRGBPalette16 Main-WhiteColor_p FL_PROGMEM =
 {
   0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF,
   0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF,
@@ -41,7 +41,22 @@ extern const TProgmemRGBPalette16 WhiteColor_p FL_PROGMEM =
   0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF
 };
 
-CRGBPalette16 ColourPaletteToUse = WhiteColor_p;
+extern const TProgmemRGBPalette32 Others-WhiteColor_p FL_PROGMEM =
+{
+  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF,
+  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF,
+  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF,
+  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF,
+  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF,
+  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF,
+  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF,
+  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF
+};
+
+CRGBPalette16 Main-ColorPalette = Main-WhiteColor_p;
+CRGBPalette16 Others-ColorPalette = Others-WhiteColor_p;
+
+CRGBPalette16 ColorPaletteToUse;
 
 void setLEDs(int iCurrentValue, uint8_t red, uint8_t green, uint8_t blue, int ledStrip)
 {
@@ -49,20 +64,16 @@ void setLEDs(int iCurrentValue, uint8_t red, uint8_t green, uint8_t blue, int le
   uint8_t iNumOfLedsOn = iCurrentValue >> 7;
   uint8_t iFinalLedBrightness = (iCurrentValue % 128) << 1;
 
+  if (ledStrip == 0)    ColorPaletteToUse = Main-WhiteColor_p;
+  else                  ColorPaletteToUse = Others-WhiteColor_p;
+
   for (int i = 0; i < 8; i++)
   {
-    if (i == (7 - iNumOfLedsOn))
-    {
-      leds[ledStrip][i] = ColorFromPalette( ColourPaletteToUse , NewColorIndex, iFinalLedBrightness, LINEARBLEND);
-    }
-    else if (i > (7 - iNumOfLedsOn))
-    {
-      leds[ledStrip][i] = ColorFromPalette( ColourPaletteToUse , NewColorIndex, 255, LINEARBLEND);
-    }
-    else
-    {
-      leds[ledStrip][i] = ColorFromPalette( ColourPaletteToUse , NewColorIndex, 0, LINEARBLEND);
-    }
+    if (i == (7 - iNumOfLedsOn))        leds[ledStrip][i] = ColorFromPalette( ColorPaletteToUse , NewColorIndex, iFinalLedBrightness, LINEARBLEND);
+
+    else if (i > (7 - iNumOfLedsOn))    leds[ledStrip][i] = ColorFromPalette( ColorPaletteToUse , NewColorIndex, 255, LINEARBLEND);
+    
+    else                                leds[ledStrip][i] = ColorFromPalette( ColorPaletteToUse , NewColorIndex, 0, LINEARBLEND);
   }
 
   FastLED.show();
