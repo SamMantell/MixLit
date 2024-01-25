@@ -34,29 +34,23 @@ CRGB leds[NUM_OF_LED_STRIPS][NUM_OF_LEDS_PER_STRIP];
 
 extern const TProgmemRGBPalette16 Main_WhiteColor_p FL_PROGMEM =
 {
-  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF,
-  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF,
-  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF,
-  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF
+  0xf0ebe4, 0xe6dcca, 0xd9c9a9, 0xdbc088, 0xe0bb70, 0xE0AA3E, 0xE0AA3E, 0xE0AA3E,
+  /*This line is not used ->*/0x000000, 0x000000, 0x000000, 0x000000, 0x000000, 0x000000, 0x000000, 0x000000
 };
 
 extern const TProgmemRGBPalette32 Others_WhiteColor_p FL_PROGMEM =
 {
-  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF,
-  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF,
-  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF,
-  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF,
-  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF,
-  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF,
-  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF,
-  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF
+  0xFFEEEE, 0xFFBBBB, 0xFFAAAA, 0xFF8888, 0xFF6666, 0xFF4444, 0xFF2222, 0xFF0000,
+  0xEEFFEE, 0xBBFFBB, 0xAAFFAA, 0x88FF88, 0x66FF66, 0x44FF44, 0x22FF22, 0x00FF00,
+  0xEEEEFF, 0xBBBBFF, 0xAAAAFF, 0x8888FF, 0x6666FF, 0x4444FF, 0x2222FF, 0x0000FF,
+  0xFFEEFF, 0xFFBBFF, 0xFFAAFF, 0xFF88FF, 0xFF66FF, 0xFF44FF, 0xFF22FF, 0xFF00FF
 };
 
 CRGBPalette16 Main_ColorPalette = Main_WhiteColor_p;
 CRGBPalette32 Others_ColorPalette = Others_WhiteColor_p;
 
-uint8_t MainColorIndex = 20;
-uint16_t OtherColorIndex = 0;
+uint8_t MainColorIndex;
+uint8_t OtherColorIndex;
 
 void setLEDs(int iCurrentValue, uint8_t red, uint8_t green, uint8_t blue, int ledStrip)
 {
@@ -67,23 +61,26 @@ void setLEDs(int iCurrentValue, uint8_t red, uint8_t green, uint8_t blue, int le
   {
     for (int i = 0; i < 8; i++)
     {
-      if (i == (7 - iNumOfLedsOn))        leds[ledStrip][i] = ColorFromPalette( Main_ColorPalette  , MainColorIndex, iFinalLedBrightness, LINEARBLEND);
+      MainColorIndex = 16*i;
+
+      if (i == (7 - iNumOfLedsOn))        leds[ledStrip][i] = ColorFromPalette( Main_ColorPalette, MainColorIndex, iFinalLedBrightness, LINEARBLEND);
   
-      else if (i > (7 - iNumOfLedsOn))    leds[ledStrip][i] = ColorFromPalette( Main_ColorPalette  , MainColorIndex, 255, LINEARBLEND);
+      else if (i > (7 - iNumOfLedsOn))    leds[ledStrip][i] = ColorFromPalette( Main_ColorPalette, MainColorIndex, 255, LINEARBLEND);
       
-      else                                leds[ledStrip][i] = ColorFromPalette( Main_ColorPalette  , MainColorIndex, 0, LINEARBLEND);
-      MainColorIndex++;
+      else                                leds[ledStrip][i] = ColorFromPalette( Main_ColorPalette, MainColorIndex, 0, LINEARBLEND);
     }
   }
   else
   {
     for (int i = 0; i < 8; i++)
     {
-      if (i == (7 - iNumOfLedsOn))        leds[ledStrip][i] = ColorFromPalette( Others_ColorPalette  , OtherColorIndex, iFinalLedBrightness, LINEARBLEND);
+      OtherColorIndex = (ledStrip-1) * 64 + i * 8;
+
+      if (i == (7 - iNumOfLedsOn))        leds[ledStrip][i] = ColorFromPalette( Others_ColorPalette, OtherColorIndex, iFinalLedBrightness, LINEARBLEND);
   
-      else if (i > (7 - iNumOfLedsOn))    leds[ledStrip][i] = ColorFromPalette( Others_ColorPalette  , OtherColorIndex, 255, LINEARBLEND);
+      else if (i > (7 - iNumOfLedsOn))    leds[ledStrip][i] = ColorFromPalette( Others_ColorPalette, OtherColorIndex, 255, LINEARBLEND);
       
-      else                                leds[ledStrip][i] = ColorFromPalette( Others_ColorPalette  , OtherColorIndex, 0, LINEARBLEND);
+      else                                leds[ledStrip][i] = ColorFromPalette( Others_ColorPalette, OtherColorIndex, 0, LINEARBLEND);
     }
   }
 
@@ -147,6 +144,6 @@ void loop()
     Serial.println(builtString);
   }
 
-  delay(50);
+  delay(20);
   colorIndex++;
 }
