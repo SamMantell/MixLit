@@ -55,12 +55,11 @@ extern const TProgmemRGBPalette32 Others_WhiteColor_p FL_PROGMEM =
 CRGBPalette16 Main_ColorPalette = Main_WhiteColor_p;
 CRGBPalette32 Others_ColorPalette = Others_WhiteColor_p;
 
-CRGBPalette16 MainColorPaletteToUse;
-CRGBPalette32 OthersColorPaletteToUse;
+uint8_t MainColorIndex = 20;
+uint16_t OtherColorIndex = 0;
 
 void setLEDs(int iCurrentValue, uint8_t red, uint8_t green, uint8_t blue, int ledStrip)
 {
-  uint16_t NewColorIndex = colorIndex + ledStrip*51;
   uint8_t iNumOfLedsOn = iCurrentValue >> 7;
   uint8_t iFinalLedBrightness = (iCurrentValue % 128) << 1;
 
@@ -68,22 +67,23 @@ void setLEDs(int iCurrentValue, uint8_t red, uint8_t green, uint8_t blue, int le
   {
     for (int i = 0; i < 8; i++)
     {
-      if (i == (7 - iNumOfLedsOn))        leds[ledStrip][i] = ColorFromPalette( MainColorPaletteToUse , NewColorIndex, iFinalLedBrightness, LINEARBLEND);
+      if (i == (7 - iNumOfLedsOn))        leds[ledStrip][i] = ColorFromPalette( Main_ColorPalette  , MainColorIndex, iFinalLedBrightness, LINEARBLEND);
   
-      else if (i > (7 - iNumOfLedsOn))    leds[ledStrip][i] = ColorFromPalette( MainColorPaletteToUse , NewColorIndex, 255, LINEARBLEND);
+      else if (i > (7 - iNumOfLedsOn))    leds[ledStrip][i] = ColorFromPalette( Main_ColorPalette  , MainColorIndex, 255, LINEARBLEND);
       
-      else                                leds[ledStrip][i] = ColorFromPalette( MainColorPaletteToUse , NewColorIndex, 0, LINEARBLEND);
+      else                                leds[ledStrip][i] = ColorFromPalette( Main_ColorPalette  , MainColorIndex, 0, LINEARBLEND);
+      MainColorIndex++;
     }
   }
   else
   {
     for (int i = 0; i < 8; i++)
     {
-      if (i == (7 - iNumOfLedsOn))        leds[ledStrip][i] = ColorFromPalette( OthersColorPaletteToUse , NewColorIndex, iFinalLedBrightness, LINEARBLEND);
+      if (i == (7 - iNumOfLedsOn))        leds[ledStrip][i] = ColorFromPalette( Others_ColorPalette  , OtherColorIndex, iFinalLedBrightness, LINEARBLEND);
   
-      else if (i > (7 - iNumOfLedsOn))    leds[ledStrip][i] = ColorFromPalette( OthersColorPaletteToUse , NewColorIndex, 255, LINEARBLEND);
+      else if (i > (7 - iNumOfLedsOn))    leds[ledStrip][i] = ColorFromPalette( Others_ColorPalette  , OtherColorIndex, 255, LINEARBLEND);
       
-      else                                leds[ledStrip][i] = ColorFromPalette( OthersColorPaletteToUse , NewColorIndex, 0, LINEARBLEND);
+      else                                leds[ledStrip][i] = ColorFromPalette( Others_ColorPalette  , OtherColorIndex, 0, LINEARBLEND);
     }
   }
 
@@ -147,6 +147,6 @@ void loop()
     Serial.println(builtString);
   }
 
-  delay(20);
+  delay(50);
   colorIndex++;
 }
