@@ -96,9 +96,13 @@ void controlChange(byte channel, byte control, byte value) {
 void setup()
 {
 
+  /*
+
   while (!Serial) {
     delay(10);
   }
+
+  */
 
   //Wired the LEDs wrong should be 7, 6, 5, 4, 3
   FastLED.addLeds<NEOPIXEL, 7>(leds[0], NUM_OF_LEDS_PER_STRIP).setCorrection( TypicalLEDStrip );
@@ -141,7 +145,7 @@ void loop()
 
   if (builtString.length() > 0)
   {
-    Serial.println(builtString);
+    //Serial.println(builtString);
   }
 
   delay(20);
