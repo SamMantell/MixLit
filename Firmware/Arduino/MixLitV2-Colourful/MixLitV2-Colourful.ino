@@ -18,8 +18,6 @@ GitHub: @SamMantell, @Goddeh1
 #define NUM_OF_LED_STRIPS 5
 #define NUM_OF_LEDS_PER_STRIP 8
 
-uint16_t colorIndex = 0;
-
 const int NumOfSliders = 5;
 char SliderIDs[NumOfSliders] = {'A', 'A', 'A', 'A', 'A'};
 const int Sliders[NumOfSliders] = {A1, A2, A3, A4, A5};
@@ -34,7 +32,7 @@ CRGB leds[NUM_OF_LED_STRIPS][NUM_OF_LEDS_PER_STRIP];
 
 extern const TProgmemRGBPalette16 Main_WhiteColor_p FL_PROGMEM =
 {
-  0xf0ebe4, 0xe6dcca, 0xd9c9a9, 0xdbc088, 0xe0bb70, 0xE0AA3E, 0xE0AA3E, 0xE0AA3E,
+  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF,
   /*This line is not used ->*/0x000000, 0x000000, 0x000000, 0x000000, 0x000000, 0x000000, 0x000000, 0x000000
 };
 
@@ -149,5 +147,4 @@ void loop()
   }
 
   delay(20);
-  colorIndex++;
 }
