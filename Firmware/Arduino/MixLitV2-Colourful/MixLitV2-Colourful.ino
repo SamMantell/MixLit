@@ -24,30 +24,24 @@ const int Sliders[NumOfSliders] = {A1, A2, A3, A4, A5};
 int prevSliderState[NumOfSliders];
 int SliderState[NumOfSliders];
 
-int red = 0;
-int green = 0;
-int blue = 0;
-
 CRGB leds[NUM_OF_LED_STRIPS][NUM_OF_LEDS_PER_STRIP];
 
-extern const TProgmemRGBPalette16 Main_WhiteColor_p FL_PROGMEM =
-{
-  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF,
-  /*This line is not used ->*/0x000000, 0x000000, 0x000000, 0x000000, 0x000000, 0x000000, 0x000000, 0x000000
-};
+CRGBPalette16 Main_ColorPalette = CRGBPalette16   (
+                /* Controls LED Strip 1 ! */      0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFF0000,  0xFF0000,
+                /* This line is redundant */      0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF
+                                                  );
 
-extern const TProgmemRGBPalette32 Others_WhiteColor_p FL_PROGMEM =
-{
-  0xFFEEEE, 0xFFBBBB, 0xFFAAAA, 0xFF8888, 0xFF6666, 0xFF4444, 0xFF2222, 0xFF0000,
-  0xEEFFEE, 0xBBFFBB, 0xAAFFAA, 0x88FF88, 0x66FF66, 0x44FF44, 0x22FF22, 0x00FF00,
-  0xEEEEFF, 0xBBBBFF, 0xAAAAFF, 0x8888FF, 0x6666FF, 0x4444FF, 0x2222FF, 0x0000FF,
-  0xFFEEFF, 0xFFBBFF, 0xFFAAFF, 0xFF88FF, 0xFF66FF, 0xFF44FF, 0xFF22FF, 0xFF00FF
-};
+CRGBPalette16 Second_ColorPalette = CRGBPalette16 (
+                /* Controls LED Strip 2 ! */      0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFF0000,  0xFF0000,
+                /* Controls LED Strip 3 ! */      0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0x00FF00,  0x00FF00
+                                                  );
 
-CRGBPalette16 Main_ColorPalette = Main_WhiteColor_p;
-CRGBPalette32 Others_ColorPalette = Others_WhiteColor_p;
+CRGBPalette16 Third_ColorPalette = CRGBPalette16  (
+                /* Controls LED Strip 4 ! */      0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0x0000FF,  0x0000FF,
+                /* Controls LED Strip 5 ! */      0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFF00FF,  0xFF00FF
+                                                  );
 
-uint8_t MainColorIndex;
+uint8_t ColorIndex;
 uint8_t OtherColorIndex;
 
 void setLEDs(int iCurrentValue, uint8_t red, uint8_t green, uint8_t blue, int ledStrip)
@@ -59,26 +53,39 @@ void setLEDs(int iCurrentValue, uint8_t red, uint8_t green, uint8_t blue, int le
   {
     for (int i = 0; i < 8; i++)
     {
-      MainColorIndex = 16*i;
+      ColorIndex = 16*i;
 
-      if (i == (7 - iNumOfLedsOn))        leds[ledStrip][i] = ColorFromPalette( Main_ColorPalette, MainColorIndex, iFinalLedBrightness, LINEARBLEND);
+      if (i == (7 - iNumOfLedsOn))        leds[ledStrip][i] = ColorFromPalette( Main_ColorPalette, ColorIndex, iFinalLedBrightness, NOBLEND);
   
-      else if (i > (7 - iNumOfLedsOn))    leds[ledStrip][i] = ColorFromPalette( Main_ColorPalette, MainColorIndex, 255, LINEARBLEND);
+      else if (i > (7 - iNumOfLedsOn))    leds[ledStrip][i] = ColorFromPalette( Main_ColorPalette, ColorIndex, 255, NOBLEND);
       
-      else                                leds[ledStrip][i] = ColorFromPalette( Main_ColorPalette, MainColorIndex, 0, LINEARBLEND);
+      else                                leds[ledStrip][i] = ColorFromPalette( Main_ColorPalette, ColorIndex, 0, NOBLEND);
+    }
+  }
+  else if (ledStrip == 1 || ledStrip == 2)
+  {
+    for (int i = 0; i < 8; i++)
+    {
+      ColorIndex = 16*i+(ledStrip-1)*128;
+
+      if (i == (7 - iNumOfLedsOn))        leds[ledStrip][i] = ColorFromPalette( Second_ColorPalette, ColorIndex, iFinalLedBrightness, NOBLEND);
+  
+      else if (i > (7 - iNumOfLedsOn))    leds[ledStrip][i] = ColorFromPalette( Second_ColorPalette, ColorIndex, 255, NOBLEND);
+      
+      else                                leds[ledStrip][i] = ColorFromPalette( Second_ColorPalette, ColorIndex, 0, NOBLEND);
     }
   }
   else
   {
     for (int i = 0; i < 8; i++)
     {
-      OtherColorIndex = (ledStrip-1) * 64 + i * 8;
+      ColorIndex = 16*i+(ledStrip-3)*128;
 
-      if (i == (7 - iNumOfLedsOn))        leds[ledStrip][i] = ColorFromPalette( Others_ColorPalette, OtherColorIndex, iFinalLedBrightness, LINEARBLEND);
+      if (i == (7 - iNumOfLedsOn))        leds[ledStrip][i] = ColorFromPalette( Third_ColorPalette, ColorIndex, iFinalLedBrightness, NOBLEND);
   
-      else if (i > (7 - iNumOfLedsOn))    leds[ledStrip][i] = ColorFromPalette( Others_ColorPalette, OtherColorIndex, 255, LINEARBLEND);
+      else if (i > (7 - iNumOfLedsOn))    leds[ledStrip][i] = ColorFromPalette( Third_ColorPalette, ColorIndex, 255, NOBLEND);
       
-      else                                leds[ledStrip][i] = ColorFromPalette( Others_ColorPalette, OtherColorIndex, 0, LINEARBLEND);
+      else                                leds[ledStrip][i] = ColorFromPalette( Third_ColorPalette, ColorIndex, 0, NOBLEND);
     }
   }
 
@@ -139,11 +146,6 @@ void loop()
       controlChange(1, i, (SliderState[i] >> 3));
       MidiUSB.flush();
     }
-  }
-
-  if (builtString.length() > 0)
-  {
-    //Serial.println(builtString);
   }
 
   delay(20);
