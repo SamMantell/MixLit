@@ -24,69 +24,58 @@ const int Sliders[NumOfSliders] = {A1, A2, A3, A4, A5};
 int prevSliderState[NumOfSliders];
 int SliderState[NumOfSliders];
 
+long currentMillis;
+long lastMillis;
+
+int loops = 0;
+
+int colorIndexOffset;
+
 CRGB leds[NUM_OF_LED_STRIPS][NUM_OF_LEDS_PER_STRIP];
 
-CRGBPalette16 Main_ColorPalette = CRGBPalette16   (
-                /* Controls LED Strip 1 ! */      0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFF0000,  0xFF0000,
-                /* This line is redundant */      0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF
-                                                  );
-
-CRGBPalette16 Second_ColorPalette = CRGBPalette16 (
-                /* Controls LED Strip 2 ! */      0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFF0000,  0xFF0000,
-                /* Controls LED Strip 3 ! */      0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0x00FF00,  0x00FF00
-                                                  );
-
-CRGBPalette16 Third_ColorPalette = CRGBPalette16  (
-                /* Controls LED Strip 4 ! */      0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0x0000FF,  0x0000FF,
-                /* Controls LED Strip 5 ! */      0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFF00FF,  0xFF00FF
-                                                  );
+CRGBPalette16 All_ColorPallete[5] = 
+{
+  CRGBPalette16   (
+                    0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF, 0xFFFFFF, 0xFF0000, 0xFF0000,  0xFF0000,
+                    0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF
+                  ),
+  CRGBPalette16   (
+                    0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF, 0xFFFFFF, 0xFF0000, 0xFF0000,  0xFF0000,
+                    0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF
+                  ),
+  CRGBPalette16   (
+                    0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF, 0xFFFFFF, 0x00FF00, 0x00FF00,  0x00FF00,
+                    0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF
+                  ),
+  CRGBPalette16   (
+                    0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF, 0xFFFFFF, 0x0000FF, 0x0000FF,  0x0000FF,
+                    0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF
+                  ),
+  CRGBPalette16   (
+                    0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF, 0xFFFFFF, 0xFF00FF, 0xFF00FF,  0xFF00FF,
+                    0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF
+                  )
+};
 
 uint8_t ColorIndex;
 uint8_t OtherColorIndex;
 
-void setLEDs(int iCurrentValue, uint8_t red, uint8_t green, uint8_t blue, int ledStrip)
+void setLEDs(int iCurrentValue, int ledStrip)
 {
+  colorIndexOffset++;
+
   uint8_t iNumOfLedsOn = iCurrentValue >> 7;
   uint8_t iFinalLedBrightness = (iCurrentValue % 128) << 1;
 
-  if (ledStrip == 0)
+  for (int i = 0; i < 8; i++)
   {
-    for (int i = 0; i < 8; i++)
-    {
-      ColorIndex = 16*i;
+    ColorIndex = 16*i + colorIndexOffset;
 
-      if (i == (7 - iNumOfLedsOn))        leds[ledStrip][i] = ColorFromPalette( Main_ColorPalette, ColorIndex, iFinalLedBrightness, NOBLEND);
+    if (i == (7 - iNumOfLedsOn))        leds[ledStrip][i] = ColorFromPalette( All_ColorPallete[ledStrip], ColorIndex, iFinalLedBrightness);
   
-      else if (i > (7 - iNumOfLedsOn))    leds[ledStrip][i] = ColorFromPalette( Main_ColorPalette, ColorIndex, 255, NOBLEND);
+    else if (i > (7 - iNumOfLedsOn))    leds[ledStrip][i] = ColorFromPalette( All_ColorPallete[ledStrip], ColorIndex, 255);
       
-      else                                leds[ledStrip][i] = ColorFromPalette( Main_ColorPalette, ColorIndex, 0, NOBLEND);
-    }
-  }
-  else if (ledStrip == 1 || ledStrip == 2)
-  {
-    for (int i = 0; i < 8; i++)
-    {
-      ColorIndex = 16*i+(ledStrip-1)*128;
-
-      if (i == (7 - iNumOfLedsOn))        leds[ledStrip][i] = ColorFromPalette( Second_ColorPalette, ColorIndex, iFinalLedBrightness, NOBLEND);
-  
-      else if (i > (7 - iNumOfLedsOn))    leds[ledStrip][i] = ColorFromPalette( Second_ColorPalette, ColorIndex, 255, NOBLEND);
-      
-      else                                leds[ledStrip][i] = ColorFromPalette( Second_ColorPalette, ColorIndex, 0, NOBLEND);
-    }
-  }
-  else
-  {
-    for (int i = 0; i < 8; i++)
-    {
-      ColorIndex = 16*i+(ledStrip-3)*128;
-
-      if (i == (7 - iNumOfLedsOn))        leds[ledStrip][i] = ColorFromPalette( Third_ColorPalette, ColorIndex, iFinalLedBrightness, NOBLEND);
-  
-      else if (i > (7 - iNumOfLedsOn))    leds[ledStrip][i] = ColorFromPalette( Third_ColorPalette, ColorIndex, 255, NOBLEND);
-      
-      else                                leds[ledStrip][i] = ColorFromPalette( Third_ColorPalette, ColorIndex, 0, NOBLEND);
-    }
+    else                                leds[ledStrip][i] = ColorFromPalette( All_ColorPallete[ledStrip], ColorIndex, 0);
   }
 
   FastLED.show();
@@ -110,29 +99,28 @@ void setup()
   */
 
   //Wired the LEDs wrong should be 7, 6, 5, 4, 3
-  FastLED.addLeds<NEOPIXEL, 7>(leds[0], NUM_OF_LEDS_PER_STRIP).setCorrection( TypicalLEDStrip );
-  FastLED.addLeds<NEOPIXEL, 5>(leds[1], NUM_OF_LEDS_PER_STRIP).setCorrection( TypicalLEDStrip );
-  FastLED.addLeds<NEOPIXEL, 6>(leds[2], NUM_OF_LEDS_PER_STRIP).setCorrection( TypicalLEDStrip );
-  FastLED.addLeds<NEOPIXEL, 4>(leds[3], NUM_OF_LEDS_PER_STRIP).setCorrection( TypicalLEDStrip );
-  FastLED.addLeds<NEOPIXEL, 3>(leds[4], NUM_OF_LEDS_PER_STRIP).setCorrection( TypicalLEDStrip );
+  FastLED.addLeds<NEOPIXEL, 7>(leds[0], NUM_OF_LEDS_PER_STRIP);
+  FastLED.addLeds<NEOPIXEL, 5>(leds[1], NUM_OF_LEDS_PER_STRIP);
+  FastLED.addLeds<NEOPIXEL, 6>(leds[2], NUM_OF_LEDS_PER_STRIP);
+  FastLED.addLeds<NEOPIXEL, 4>(leds[3], NUM_OF_LEDS_PER_STRIP);
+  FastLED.addLeds<NEOPIXEL, 3>(leds[4], NUM_OF_LEDS_PER_STRIP);
 
   FastLED.setBrightness(32);
 }
 
 void loop()
-{
+{ 
+  loops++;
+
   String builtString = String("");
 
   for (int i = 0; i < NumOfSliders; i++)
   {
-
     SliderState[i] = analogRead(Sliders[i]);
 
-    int diff = abs(SliderState[i] - prevSliderState[i]);
+    setLEDs(SliderState[i], i);
 
-    setLEDs(SliderState[i], 10, 10, 10, i);
-
-    if (diff > 2)
+    if (abs(SliderState[i] - prevSliderState[i]) > 2)
     {
       prevSliderState[i] = SliderState[i];
 
@@ -148,5 +136,13 @@ void loop()
     }
   }
 
-  delay(20);
+  /*
+  long currentMillis = millis() - lastMillis;
+  if (loops == 100)
+  {
+    lastMillis += currentMillis;
+    loops = 0;
+    Serial.println(currentMillis);
+  }
+  */
 }
