@@ -108,8 +108,6 @@ void setup()
 
 void loop()
 { 
-  loops++;
-
   String builtString = String("");
 
   for (int i = 0; i < NumOfSliders; i++)
@@ -134,8 +132,12 @@ void loop()
     }
   }
 
-  //FastLED.show();
+  FastLED.show();
   
+  /* 
+  // Optimisation Check
+  loops++;
+
   long currentMillis = millis() - lastMillis;
   if (loops == 100)
   {
@@ -143,5 +145,6 @@ void loop()
     loops = 0;
     Serial.println(currentMillis);
   }
-  
+
+  */
 }
