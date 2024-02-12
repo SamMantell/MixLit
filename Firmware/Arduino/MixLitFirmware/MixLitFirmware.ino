@@ -33,7 +33,7 @@ int colorIndexOffset;
 
 CRGB leds[NUM_OF_LED_STRIPS][NUM_OF_LEDS_PER_STRIP];
 
-CRGBPalette16 All_ColorPallete[5] = 
+CRGBPalette16 All_ColorPallete[NUM_OF_LED_STRIPS] = 
 {
   CRGBPalette16   (
                     0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF, 0xFFFFFF, 0xFF0000, 0xFF0000,  0xFF0000,
@@ -62,7 +62,7 @@ uint8_t OtherColorIndex;
 
 void setLEDs(int iCurrentValue, int ledStrip)
 {
-  colorIndexOffset++;
+  //colorIndexOffset++;
 
   uint8_t iNumOfLedsOn = iCurrentValue >> 7;
   uint8_t iFinalLedBrightness = (iCurrentValue % 128) << 1;
@@ -77,8 +77,6 @@ void setLEDs(int iCurrentValue, int ledStrip)
       
     else                                leds[ledStrip][i] = ColorFromPalette( All_ColorPallete[ledStrip], ColorIndex, 0);
   }
-
-  FastLED.show();
 }
 
 void controlChange(byte channel, byte control, byte value) {
@@ -136,7 +134,8 @@ void loop()
     }
   }
 
-  /*
+  //FastLED.show();
+  
   long currentMillis = millis() - lastMillis;
   if (loops == 100)
   {
@@ -144,5 +143,5 @@ void loop()
     loops = 0;
     Serial.println(currentMillis);
   }
-  */
+  
 }
