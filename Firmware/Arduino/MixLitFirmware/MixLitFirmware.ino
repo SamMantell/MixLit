@@ -136,7 +136,7 @@ void loop()
   }
   
   
-
+  /*
   // Optimisation Check
   loops++;
 
@@ -147,6 +147,6 @@ void loop()
     loops = 0;
     Serial.println(currentMillis);
   }
-
+  */
   
 }
