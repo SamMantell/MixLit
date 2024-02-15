@@ -24,6 +24,8 @@ const int Sliders[NumOfSliders] = {A1, A2, A3, A4, A5};
 int prevSliderState[NumOfSliders];
 int SliderState[NumOfSliders];
 
+bool isAnimated = false;
+
 long currentMillis;
 long lastMillis;
 
@@ -62,7 +64,7 @@ uint8_t OtherColorIndex;
 
 void setLEDs(int iCurrentValue, int ledStrip)
 {
-  //colorIndexOffset++;
+  if (isAnimated) colorIndexOffset++;
 
   uint8_t iNumOfLedsOn = iCurrentValue >> 7;
   uint8_t iFinalLedBrightness = (iCurrentValue % 128) << 1;
@@ -103,7 +105,7 @@ void setup()
   FastLED.addLeds<WS2812, 4, GRB>(leds[3], NUM_OF_LEDS_PER_STRIP);
   FastLED.addLeds<WS2812, 3, GRB>(leds[4], NUM_OF_LEDS_PER_STRIP);
 
-  FastLED.setBrightness(32);
+  FastLED.setBrightness(24);
 }
 
 void loop()
@@ -114,27 +116,27 @@ void loop()
   {
     SliderState[i] = analogRead(Sliders[i]);
 
-    setLEDs(SliderState[i], i);
+    if ((abs(SliderState[i] - prevSliderState[i]) > 2) || isAnimated)
+    {
+      setLEDs(SliderState[i], i);
+      FastLED.show();
+    }
 
     if (abs(SliderState[i] - prevSliderState[i]) > 2)
     {
       prevSliderState[i] = SliderState[i];
 
-      builtString += String(SliderIDs[i]) + String(i + 1) + "|" + String(SliderState[i]);
+      builtString = String(i) + "|" + String(SliderState[i]);
 
-      if (i != NumOfSliders - 1)
-      {
-        builtString += String("|");
-      }
+      Serial.println(builtString);
 
       controlChange(1, i, (SliderState[i] >> 3));
       MidiUSB.flush();
     }
   }
-
-  FastLED.show();
   
-  /* 
+  
+
   // Optimisation Check
   loops++;
 
@@ -146,5 +148,5 @@ void loop()
     Serial.println(currentMillis);
   }
 
-  */
+  
 }
