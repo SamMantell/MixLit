@@ -16,15 +16,15 @@ GitHub: @SamMantell, @Goddeh1
 #endif
 
 #define NUM_OF_LED_STRIPS 5
+#define NUM_OF_SLIDERS 5
 #define NUM_OF_LEDS_PER_STRIP 8
 
-const int NumOfSliders = 5;
-char SliderIDs[NumOfSliders] = {'A', 'A', 'A', 'A', 'A'};
-const int Sliders[NumOfSliders] = {A1, A2, A3, A4, A5};
-int prevSliderState[NumOfSliders];
-int SliderState[NumOfSliders];
+const int Sliders[NUM_OF_LED_STRIPS] = {A1, A2, A3, A4, A5};
+int prevSliderState[NUM_OF_LED_STRIPS];
+int SliderState[NUM_OF_LED_STRIPS];
 
 bool isAnimated = false;
+bool isVoiceMeter = true;
 
 long currentMillis;
 long lastMillis;
@@ -66,6 +66,8 @@ void setLEDs(int iCurrentValue, int ledStrip)
 {
   if (isAnimated) colorIndexOffset++;
 
+  else colorIndexOffset = 0;
+
   uint8_t iNumOfLedsOn = iCurrentValue >> 7;
   uint8_t iFinalLedBrightness = (iCurrentValue % 128) << 1;
 
@@ -73,11 +75,11 @@ void setLEDs(int iCurrentValue, int ledStrip)
   {
     ColorIndex = 16*i + colorIndexOffset;
 
-    if (i == (7 - iNumOfLedsOn))        leds[ledStrip][i] = ColorFromPalette( All_ColorPallete[ledStrip], ColorIndex, iFinalLedBrightness);
+    if (i == (NUM_OF_LEDS_PER_STRIP - 1 - iNumOfLedsOn))        leds[ledStrip][i] = ColorFromPalette( All_ColorPallete[ledStrip], ColorIndex, iFinalLedBrightness);
   
-    else if (i > (7 - iNumOfLedsOn))    leds[ledStrip][i] = ColorFromPalette( All_ColorPallete[ledStrip], ColorIndex, 255);
+    else if (i > (NUM_OF_LEDS_PER_STRIP - 1 - iNumOfLedsOn))    leds[ledStrip][i] = ColorFromPalette( All_ColorPallete[ledStrip], ColorIndex, 255);
       
-    else                                leds[ledStrip][i] = ColorFromPalette( All_ColorPallete[ledStrip], ColorIndex, 0);
+    else                                                        leds[ledStrip][i] = ColorFromPalette( All_ColorPallete[ledStrip], ColorIndex, 0);
   }
 }
 
@@ -90,15 +92,15 @@ void controlChange(byte channel, byte control, byte value) {
 void setup()
 {
 
-  /*
-
-  while (!Serial) {
+  if (!isVoiceMeter)
+  {
+    while (!Serial)
+    {
     delay(10);
+    }
   }
 
-  */
-
-  //Wired the LEDs wrong should be 7, 6, 5, 4, 3
+  //Wired the LEDs wrong should be 7, 6, 5, 4, 3 but here you can fix if need
   FastLED.addLeds<WS2812, 7, GRB>(leds[0], NUM_OF_LEDS_PER_STRIP);
   FastLED.addLeds<WS2812, 5, GRB>(leds[1], NUM_OF_LEDS_PER_STRIP);
   FastLED.addLeds<WS2812, 6, GRB>(leds[2], NUM_OF_LEDS_PER_STRIP);
@@ -112,7 +114,7 @@ void loop()
 { 
   String builtString = String("");
 
-  for (int i = 0; i < NumOfSliders; i++)
+  for (int i = 0; i < NUM_OF_LED_STRIPS; i++)
   {
     SliderState[i] = analogRead(Sliders[i]);
 
@@ -126,12 +128,16 @@ void loop()
     {
       prevSliderState[i] = SliderState[i];
 
-      builtString = String(i) + "|" + String(SliderState[i]);
-
-      Serial.println(builtString);
-
-      controlChange(1, i, (SliderState[i] >> 3));
-      MidiUSB.flush();
+      if (isVoiceMeter)
+      {
+        controlChange(1, i, (SliderState[i] >> 3));
+        MidiUSB.flush();
+      }
+      else
+      {
+        builtString = String(i) + "|" + String(SliderState[i]);
+        Serial.println(builtString);
+      }
     }
   }
   
