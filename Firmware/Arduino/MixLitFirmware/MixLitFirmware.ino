@@ -19,12 +19,16 @@ GitHub: @SamMantell, @Goddeh1
 #define NUM_OF_SLIDERS 5
 #define NUM_OF_LEDS_PER_STRIP 8
 
+String serialDataFromPC;
+
 const int Sliders[NUM_OF_LED_STRIPS] = {A1, A2, A3, A4, A5};
 int prevSliderState[NUM_OF_LED_STRIPS];
 int SliderState[NUM_OF_LED_STRIPS];
 
 bool isAnimated = false;
 bool isVoiceMeter = true;
+
+int HEX_VALUE;
 
 long currentMillis;
 long lastMillis;
@@ -141,7 +145,21 @@ void loop()
     }
   }
   
-  
+  if (Serial.available() > 0) {
+    // read the incoming byte:
+    serialDataFromPC = Serial.readString();
+
+    // say what you got:
+    Serial.print("I received: ");
+    Serial.println(serialDataFromPC[1]);
+
+    HEX_VALUE = strtoul(serialDataFromPC[0],NULL,16);
+    
+    Serial.println("HEX_VALUE:");
+    Serial.println(HEX_VALUE, HEX);
+  }
+
+
   /*
   // Optimisation Check
   loops++;
