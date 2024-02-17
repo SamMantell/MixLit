@@ -27,8 +27,11 @@ int SliderState[NUM_OF_LED_STRIPS];
 
 bool isAnimated = false;
 bool isVoiceMeter = true;
+bool needsUpdate = true;
 
-int HEX_VALUE;
+char tempFullHexStorage[128];
+char tempPartHexStorage[128];
+uint32_t HEX_VALUE = 0;
 
 long currentMillis;
 long lastMillis;
@@ -42,7 +45,7 @@ CRGB leds[NUM_OF_LED_STRIPS][NUM_OF_LEDS_PER_STRIP];
 CRGBPalette16 All_ColorPallete[NUM_OF_LED_STRIPS] = 
 {
   CRGBPalette16   (
-                    0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF, 0xFFFFFF, 0xFF0000, 0xFF0000,  0xFF0000,
+                    0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFF0000,  0xFF0000,
                     0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF
                   ),
   CRGBPalette16   (
@@ -68,6 +71,8 @@ uint8_t OtherColorIndex;
 
 void setLEDs(int iCurrentValue, int ledStrip)
 {
+  needsUpdate = false;
+
   if (isAnimated) colorIndexOffset++;
 
   else colorIndexOffset = 0;
@@ -122,7 +127,7 @@ void loop()
   {
     SliderState[i] = analogRead(Sliders[i]);
 
-    if ((abs(SliderState[i] - prevSliderState[i]) > 2) || isAnimated)
+    if ((abs(SliderState[i] - prevSliderState[i]) > 2) || isAnimated || needsUpdate)
     {
       setLEDs(SliderState[i], i);
       FastLED.show();
@@ -149,14 +154,38 @@ void loop()
     // read the incoming byte:
     serialDataFromPC = Serial.readString();
 
-    // say what you got:
-    Serial.print("I received: ");
-    Serial.println(serialDataFromPC[1]);
+    Serial.println("--------------------------------");
+    Serial.println("");
+    Serial.println("String Input:");
+    Serial.println(serialDataFromPC);
 
-    HEX_VALUE = strtoul(serialDataFromPC[0],NULL,16);
+    serialDataFromPC.toCharArray(tempFullHexStorage, 128);
+
+    Serial.println("Temp Hex Storage:");
+    Serial.println(tempFullHexStorage);
+    Serial.println("");
+
+    for (int i = 0; i < 6; i++)
+    {
+      tempPartHexStorage[i] = tempFullHexStorage[6+i];
+    }
+
+    HEX_VALUE = strtol(tempPartHexStorage, NULL, 16);
     
     Serial.println("HEX_VALUE:");
     Serial.println(HEX_VALUE, HEX);
+    Serial.println("");
+    Serial.println("--------------------------------");
+
+    All_ColorPallete[0] = 
+    {
+      CRGBPalette16   (
+                        HEX_VALUE, HEX_VALUE, HEX_VALUE,  HEX_VALUE, HEX_VALUE, HEX_VALUE, 0xFF0000,  0xFF0000,
+                        0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF
+                      )
+    };
+
+    needsUpdate = true;
   }
 
 
