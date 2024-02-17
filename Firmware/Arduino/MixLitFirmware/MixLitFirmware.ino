@@ -31,7 +31,9 @@ bool needsUpdate = true;
 
 char tempFullHexStorage[128];
 char tempPartHexStorage[128];
-uint32_t HEX_VALUE = 0;
+
+uint32_t HEX_VALUE[8];
+int SliderToChange;
 
 long currentMillis;
 long lastMillis;
@@ -45,7 +47,7 @@ CRGB leds[NUM_OF_LED_STRIPS][NUM_OF_LEDS_PER_STRIP];
 CRGBPalette16 All_ColorPallete[NUM_OF_LED_STRIPS] = 
 {
   CRGBPalette16   (
-                    0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFF0000,  0xFF0000,
+                    0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF, 0xFFFFFF, 0xFF0000, 0xFF0000,  0xFF0000,
                     0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF
                   ),
   CRGBPalette16   (
@@ -165,25 +167,43 @@ void loop()
     Serial.println(tempFullHexStorage);
     Serial.println("");
 
-    for (int i = 0; i < 6; i++)
+    Serial.println("Slider To Be Changed:");
+    tempPartHexStorage[1] = 0;
+    tempPartHexStorage[2] = 0;
+    tempPartHexStorage[3] = 0;
+    tempPartHexStorage[4] = 0;
+    tempPartHexStorage[5] = 0;
+    tempPartHexStorage[0] = tempFullHexStorage[0];
+    HEX_VALUE[0] = strtol(tempPartHexStorage, NULL, 16);
+    SliderToChange = HEX_VALUE[0];
+    Serial.println(String(SliderToChange));
+    Serial.println("");
+
+    tempPartHexStorage[0] = tempFullHexStorage[0];
+    HEX_VALUE[0] = strtol(tempPartHexStorage, NULL, 16);
+    int SliderToBeChanged = HEX_VALUE[0];
+
+    for (int i = 0; i < 16; i++)
     {
-      tempPartHexStorage[i] = tempFullHexStorage[6+i];
+      for (int j = 0; j < 6; j++)
+      {
+        tempPartHexStorage[j] = tempFullHexStorage[2+(6*i+j)];
+      }
+      HEX_VALUE[i] = strtol(tempPartHexStorage, NULL, 16);
+      Serial.println("HEX_VALUE[" + String(i) + "]:");
+      Serial.println(HEX_VALUE[i], HEX);
     }
 
-    HEX_VALUE = strtol(tempPartHexStorage, NULL, 16);
-    
-    Serial.println("HEX_VALUE:");
-    Serial.println(HEX_VALUE, HEX);
-    Serial.println("");
     Serial.println("--------------------------------");
 
-    All_ColorPallete[0] = 
+    All_ColorPallete[1] = 
     {
       CRGBPalette16   (
-                        HEX_VALUE, HEX_VALUE, HEX_VALUE,  HEX_VALUE, HEX_VALUE, HEX_VALUE, 0xFF0000,  0xFF0000,
-                        0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF
+                        HEX_VALUE[0], HEX_VALUE[1], HEX_VALUE[2],  HEX_VALUE[3], HEX_VALUE[4], HEX_VALUE[5], HEX_VALUE[6],  HEX_VALUE[7],
+                        HEX_VALUE[8], HEX_VALUE[9], HEX_VALUE[10],  HEX_VALUE[11], HEX_VALUE[12], HEX_VALUE[13], HEX_VALUE[14],  HEX_VALUE[15]
                       )
     };
+
 
     needsUpdate = true;
   }
