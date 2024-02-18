@@ -73,8 +73,6 @@ uint8_t OtherColorIndex;
 
 void setLEDs(int iCurrentValue, int ledStrip)
 {
-  needsUpdate = false;
-
   if (isAnimated) colorIndexOffset++;
 
   else colorIndexOffset = 0;
@@ -151,6 +149,8 @@ void loop()
       }
     }
   }
+
+  if (needsUpdate = true) needsUpdate = false;
   
   if (Serial.available() > 0) {
     // read the incoming byte:
@@ -176,8 +176,11 @@ void loop()
     tempPartHexStorage[0] = tempFullHexStorage[0];
     HEX_VALUE[0] = strtol(tempPartHexStorage, NULL, 16);
     SliderToChange = HEX_VALUE[0];
+    tempPartHexStorage[0] = tempFullHexStorage[1];
+    HEX_VALUE[0] = strtol(tempPartHexStorage, NULL, 16);
+    isAnimated = bool(HEX_VALUE[0]);
     Serial.println(String(SliderToChange));
-    Serial.println("");
+    Serial.println(String(isAnimated));
 
     tempPartHexStorage[0] = tempFullHexStorage[0];
     HEX_VALUE[0] = strtol(tempPartHexStorage, NULL, 16);
@@ -196,7 +199,7 @@ void loop()
 
     Serial.println("--------------------------------");
 
-    All_ColorPallete[1] = 
+    All_ColorPallete[SliderToBeChanged] = 
     {
       CRGBPalette16   (
                         HEX_VALUE[0], HEX_VALUE[1], HEX_VALUE[2],  HEX_VALUE[3], HEX_VALUE[4], HEX_VALUE[5], HEX_VALUE[6],  HEX_VALUE[7],
