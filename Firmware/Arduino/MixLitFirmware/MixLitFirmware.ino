@@ -92,6 +92,45 @@ void setLEDs(int iCurrentValue, int ledStrip)
   }
 }
 
+void readSerialDataAndSetLEDs() {
+  serialDataFromPC = Serial.readString();
+
+  serialDataFromPC.toCharArray(tempFullHexStorage, 128);
+
+  tempPartHexStorage[1] = 0;
+  tempPartHexStorage[2] = 0;
+  tempPartHexStorage[3] = 0;
+  tempPartHexStorage[4] = 0;
+  tempPartHexStorage[5] = 0;
+
+  tempPartHexStorage[0] = tempFullHexStorage[0];
+  HEX_VALUE[0] = strtol(tempPartHexStorage, NULL, 16);
+  SliderToChange = HEX_VALUE[0];
+
+  tempPartHexStorage[0] = tempFullHexStorage[1];
+  HEX_VALUE[0] = strtol(tempPartHexStorage, NULL, 16);
+  isAnimated = bool(HEX_VALUE[0]);
+
+  for (int i = 0; i < 16; i++)
+  {
+    for (int j = 0; j < 6; j++)
+    {
+      tempPartHexStorage[j] = tempFullHexStorage[2+(6*i+j)];
+    }
+    HEX_VALUE[i] = strtol(tempPartHexStorage, NULL, 16);
+  }
+
+  All_ColorPallete[SliderToChange] = 
+  {
+    CRGBPalette16   (
+                        HEX_VALUE[0], HEX_VALUE[1], HEX_VALUE[2],  HEX_VALUE[3], HEX_VALUE[4], HEX_VALUE[5], HEX_VALUE[6],  HEX_VALUE[7],
+                        HEX_VALUE[8], HEX_VALUE[9], HEX_VALUE[10],  HEX_VALUE[11], HEX_VALUE[12], HEX_VALUE[13], HEX_VALUE[14],  HEX_VALUE[15]
+                    )
+  };
+
+  needsUpdate = true;
+}
+
 void controlChange(byte channel, byte control, byte value) {
   midiEventPacket_t event = {0x0B, 0xB0 | channel, control, value};
   MidiUSB.sendMIDI(event);
@@ -152,65 +191,10 @@ void loop()
 
   if (needsUpdate = true) needsUpdate = false;
   
-  if (Serial.available() > 0) {
-    // read the incoming byte:
-    serialDataFromPC = Serial.readString();
-
-    Serial.println("--------------------------------");
-    Serial.println("");
-    Serial.println("String Input:");
-    Serial.println(serialDataFromPC);
-
-    serialDataFromPC.toCharArray(tempFullHexStorage, 128);
-
-    Serial.println("Temp Hex Storage:");
-    Serial.println(tempFullHexStorage);
-    Serial.println("");
-
-    Serial.println("Slider To Be Changed:");
-    tempPartHexStorage[1] = 0;
-    tempPartHexStorage[2] = 0;
-    tempPartHexStorage[3] = 0;
-    tempPartHexStorage[4] = 0;
-    tempPartHexStorage[5] = 0;
-    tempPartHexStorage[0] = tempFullHexStorage[0];
-    HEX_VALUE[0] = strtol(tempPartHexStorage, NULL, 16);
-    SliderToChange = HEX_VALUE[0];
-    tempPartHexStorage[0] = tempFullHexStorage[1];
-    HEX_VALUE[0] = strtol(tempPartHexStorage, NULL, 16);
-    isAnimated = bool(HEX_VALUE[0]);
-    Serial.println(String(SliderToChange));
-    Serial.println(String(isAnimated));
-
-    tempPartHexStorage[0] = tempFullHexStorage[0];
-    HEX_VALUE[0] = strtol(tempPartHexStorage, NULL, 16);
-    int SliderToBeChanged = HEX_VALUE[0];
-
-    for (int i = 0; i < 16; i++)
-    {
-      for (int j = 0; j < 6; j++)
-      {
-        tempPartHexStorage[j] = tempFullHexStorage[2+(6*i+j)];
-      }
-      HEX_VALUE[i] = strtol(tempPartHexStorage, NULL, 16);
-      Serial.println("HEX_VALUE[" + String(i) + "]:");
-      Serial.println(HEX_VALUE[i], HEX);
-    }
-
-    Serial.println("--------------------------------");
-
-    All_ColorPallete[SliderToBeChanged] = 
-    {
-      CRGBPalette16   (
-                        HEX_VALUE[0], HEX_VALUE[1], HEX_VALUE[2],  HEX_VALUE[3], HEX_VALUE[4], HEX_VALUE[5], HEX_VALUE[6],  HEX_VALUE[7],
-                        HEX_VALUE[8], HEX_VALUE[9], HEX_VALUE[10],  HEX_VALUE[11], HEX_VALUE[12], HEX_VALUE[13], HEX_VALUE[14],  HEX_VALUE[15]
-                      )
-    };
-
-
-    needsUpdate = true;
+  if (Serial.available() > 0)
+  {
+    readSerialDataAndSetLEDs();
   }
-
 
   /*
   // Optimisation Check
