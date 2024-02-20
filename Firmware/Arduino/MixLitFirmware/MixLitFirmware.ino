@@ -2,10 +2,26 @@
 
 MixLit Firmware V2
 
-For Arduino
+For Arduino Leonardo
 
 Authors: Sam Mantell, Goddeh
 GitHub: @SamMantell, @Goddeh1
+
+This program is the firmware for the MixLit, it is responsible for taking slider inputs, sending them to a PC over serial.
+
+It also is responsible for control over the LEDS, these can be adjusted over serial by sending a string to the MixLit over serial as follows.
+
+
+
+      0     0      FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF       FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF
+      |     |                               |                                                         |
+ Slider ID  |   First set of HEX RGB values for the 8 leds on the strip     Second set of 8 values for if it is animated
+            |
+  Wether it is animated
+
+
+
+RGB values are sent as 24 bits over 6 HEX values, the brightness of the LED can be controled by the RGB value, master brightness and the brightness used in the function to control the brightness of the final LED lit.
 
 */
 
