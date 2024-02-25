@@ -32,7 +32,6 @@ RGB values are sent as 24 bits over 6 HEX values, the brightness of the LED can 
 #endif
 
 #define NUM_OF_LED_STRIPS 5
-#define NUM_OF_SLIDERS 5
 #define NUM_OF_LEDS_PER_STRIP 8
 
 String serialDataFromPC;
@@ -85,7 +84,6 @@ CRGBPalette16 All_ColorPallete[NUM_OF_LED_STRIPS] =
 };
 
 uint8_t ColorIndex;
-uint8_t OtherColorIndex;
 
 void setLEDs(int iCurrentValue, int ledStrip)
 {
