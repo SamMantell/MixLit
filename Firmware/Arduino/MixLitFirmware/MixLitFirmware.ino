@@ -91,6 +91,7 @@ void setLEDs(int iCurrentValue, int ledStrip)
 
   else colorIndexOffset = 0;
 
+  // this will take the 10 bit value from the slider, and use bitshift and remainder calculation to get the number of leds on and the brightness of the final one.
   uint8_t iNumOfLedsOn = iCurrentValue >> 7;
   uint8_t iFinalLedBrightness = (iCurrentValue % 128) << 1;
 
