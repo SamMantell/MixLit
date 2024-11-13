@@ -53,7 +53,7 @@ int SliderToChange;
 long currentMillis;
 long lastMillis;
 
-const int delayBetweenUpdates 100;
+const int delayBetweenUpdates = 10;
 
 int loops = 0;
 
@@ -200,11 +200,11 @@ void loop()
       }
       else
       {
-        builtString = String(i) + "|" + String(SliderState[i]);
-        Serial.println(builtString);
+        builtString += String(i) + "|" + String(SliderState[i]) + "|";
       }
     }
   }
+  if (builtString != "") Serial.println(builtString);
 
   if (needsUpdate = true) needsUpdate = false;
   
