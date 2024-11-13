@@ -41,7 +41,7 @@ int prevSliderState[NUM_OF_LED_STRIPS];
 int SliderState[NUM_OF_LED_STRIPS];
 
 bool isAnimated = false;
-bool isVoiceMeter = true;
+bool isVoiceMeter = false;
 bool needsUpdate = true;
 
 char tempFullHexStorage[128];
