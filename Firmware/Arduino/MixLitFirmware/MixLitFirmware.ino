@@ -53,6 +53,8 @@ int SliderToChange;
 long currentMillis;
 long lastMillis;
 
+const int delayBetweenUpdates 100;
+
 int loops = 0;
 
 int colorIndexOffset;
@@ -174,7 +176,7 @@ void setup()
 }
 
 void loop()
-{ 
+{
   String builtString = String("");
 
   for (int i = 0; i < NUM_OF_LED_STRIPS; i++)
@@ -210,6 +212,8 @@ void loop()
   {
     readSerialDataAndSetLEDs();
   }
+  
+  delay(delayBetweenUpdates);
 
   /*
   // Optimisation Check
