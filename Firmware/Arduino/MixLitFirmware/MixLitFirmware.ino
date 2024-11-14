@@ -189,7 +189,7 @@ void loop()
       FastLED.show();
     }
 
-    if (abs(SliderState[i] - prevSliderState[i]) > 2)
+    if (abs(SliderState[i] - prevSliderState[i]) > 6)
     {
       prevSliderState[i] = SliderState[i];
 
