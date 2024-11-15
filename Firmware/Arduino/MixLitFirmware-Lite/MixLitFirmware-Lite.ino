@@ -11,8 +11,6 @@ This program is the firmware for the MixLit Lite, this program will only use a M
 
 */
 
-#include <MIDIUSB.h>
-
 #define NUM_OF_SLIDERS 5
 
 const int Sliders[NUM_OF_SLIDERS] = {A1, A2, A3, A4, A5};
@@ -21,31 +19,31 @@ int SliderState[NUM_OF_SLIDERS];
 
 bool needsUpdate = true;
 
-void controlChange(byte channel, byte control, byte value) {
-  midiEventPacket_t event = {0x0B, 0xB0 | channel, control, value};
-  MidiUSB.sendMIDI(event);
-}
-
-
 void setup()
 {
-
+  while (!Serial)
+  {
+    delay(10);
+  }
 }
 
 void loop()
 { 
+  String builtString = String("");
+
   for (int i = 0; i < NUM_OF_SLIDERS; i++)
   {
     SliderState[i] = analogRead(Sliders[i]);
 
-    if (abs(SliderState[i] - prevSliderState[i]) > 2)
+    if (abs(SliderState[i] - prevSliderState[i]) > 10)
     {
       prevSliderState[i] = SliderState[i];
 
-      controlChange(1, i, (SliderState[i] >> 3));
-      MidiUSB.flush();
+      builtString += String(i) + "|" + String(SliderState[i]) + "|";
     }
   }
+
+  if (builtString != "") Serial.println(builtString);
 
   if (needsUpdate = true) needsUpdate = false;
 
