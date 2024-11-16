@@ -156,15 +156,6 @@ void controlChange(byte channel, byte control, byte value) {
 
 void setup()
 {
-
-  if (!isVoiceMeter)
-  {
-    while (!Serial)
-    {
-    delay(10);
-    }
-  }
-
   //Wired the LEDs wrong should be 7, 6, 5, 4, 3 but here you can fix if need
   FastLED.addLeds<WS2812, 7, GRB>(leds[0], NUM_OF_LEDS_PER_STRIP);
   FastLED.addLeds<WS2812, 5, GRB>(leds[1], NUM_OF_LEDS_PER_STRIP);
