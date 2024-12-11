@@ -1,4 +1,4 @@
-24385588323406472
+24389056076982571
 Audio_Module
 Reverb_BTDR-1H
 Digital Reverberation Unit, http://www.belton.co.kr/inc/downfile.php?seq=17&file=pdf (footprint from http://www.uk-electronic.de/PDF/BTDR-1.pdf)
@@ -98511,12 +98511,26 @@ Varistor VF
 2
 2
 custom_library
+Custom LED Strip
+
+
+0
+3
+3
+custom_library
 Custom Slide Potentiometer Double Linear 10K
 
 
 0
 6
 6
+custom_library
+Custom Spin Potentiometer
+
+
+0
+3
+3
 custom_library
 PCB_USB_connector
 
