@@ -137,7 +137,7 @@
 		(descr "Through hole straight pin header, 1x03, 2.54mm pitch, single row")
 		(tags "Through hole pin header THT 1x03 2.54mm single row")
 		(property "Reference" "J16"
-			(at 0 8 360)
+			(at 0 8 0)
 			(layer "F.SilkS")
 			(uuid "42015d3b-2b13-4774-8901-eec6509f9009")
 			(effects
@@ -148,7 +148,7 @@
 			)
 		)
 		(property "Value" "Conn_01x03_Pin"
-			(at 0 7.41 360)
+			(at 0 7.41 0)
 			(layer "F.Fab")
 			(hide yes)
 			(uuid "9688de7c-c330-4a69-ad50-f24b3ab1df0a")
@@ -1315,7 +1315,7 @@
 			(uuid "f3ada3af-11e6-4b82-989a-71d1cb583822")
 		)
 		(fp_text user "${REFERENCE}"
-			(at 0 2.54 360)
+			(at 0 2.54 0)
 			(layer "F.Fab")
 			(uuid "d0d4da28-82a2-4612-a069-63cea941b03a")
 			(effects
@@ -1594,7 +1594,7 @@
 			(uuid "75883693-02c2-4ab1-a846-d5536a3f3a9f")
 		)
 		(fp_text user "${REFERENCE}"
-			(at 0 2.54 360)
+			(at 0 2.54 0)
 			(layer "F.Fab")
 			(uuid "4f7c802e-84ce-43ba-8611-7b62139eb632")
 			(effects
@@ -5649,7 +5649,7 @@
 		(descr "Through hole straight pin header, 1x03, 2.54mm pitch, single row")
 		(tags "Through hole pin header THT 1x03 2.54mm single row")
 		(property "Reference" "J14"
-			(at 0 -2.33 360)
+			(at 0 -2.33 0)
 			(layer "F.SilkS")
 			(uuid "317c1de6-ff48-4e15-8db6-3bd82f9774b9")
 			(effects
@@ -5660,7 +5660,7 @@
 			)
 		)
 		(property "Value" "Conn_01x03_Pin"
-			(at 0 7.41 360)
+			(at 0 7.41 0)
 			(layer "F.Fab")
 			(hide yes)
 			(uuid "d1b91d27-ba19-4b06-8235-dc3c10b49d13")
@@ -6308,7 +6308,7 @@
 			(uuid "6dc3b3f1-98d5-4be0-99aa-992866fab286")
 		)
 		(fp_text user "${REFERENCE}"
-			(at 0 2.54 360)
+			(at 0 2.54 0)
 			(layer "F.Fab")
 			(uuid "00ca0eaf-6035-453a-bade-b5e4a2c1cf22")
 			(effects
@@ -6370,7 +6370,7 @@
 		(descr "Through hole straight pin header, 1x03, 2.54mm pitch, single row")
 		(tags "Through hole pin header THT 1x03 2.54mm single row")
 		(property "Reference" "J15"
-			(at 0 -2.33 360)
+			(at 0 -2.33 0)
 			(layer "F.SilkS")
 			(uuid "908c82a7-1fd8-41b7-8a5a-5c08ab303c72")
 			(effects
@@ -6381,7 +6381,7 @@
 			)
 		)
 		(property "Value" "Conn_01x03_Pin"
-			(at 0 7.41 360)
+			(at 0 7.41 0)
 			(layer "F.Fab")
 			(hide yes)
 			(uuid "6e28722e-72cf-47e1-9785-d0fb0057d209")
@@ -6866,7 +6866,7 @@
 			(uuid "fd3800b3-0bf7-4178-bd65-56389b6dc14f")
 		)
 		(fp_text user "${REFERENCE}"
-			(at 0 2.54 360)
+			(at 0 2.54 0)
 			(layer "F.Fab")
 			(uuid "8aafa588-aa89-421e-8b39-3bfaa2c26998")
 			(effects
@@ -9542,7 +9542,7 @@
 			(uuid "49876024-2815-4391-94c0-9b1e3e8d9175")
 		)
 		(fp_text user "${REFERENCE}"
-			(at 0 2.54 360)
+			(at 0 2.54 0)
 			(layer "F.Fab")
 			(uuid "8fb0b1d6-a9aa-4919-b807-b548d4e745c0")
 			(effects
@@ -10352,6 +10352,17 @@
 		)
 	)
 	(gr_rect
+		(start 147.5 113.5)
+		(end 148.5 140.75)
+		(stroke
+			(width 0.05)
+			(type default)
+		)
+		(fill none)
+		(layer "Edge.Cuts")
+		(uuid "23dcaffd-d94a-4d39-92e4-2a6f73320c4b")
+	)
+	(gr_rect
 		(start 231.75 85.75)
 		(end 234.75 140.75)
 		(stroke
@@ -10361,6 +10372,17 @@
 		(fill none)
 		(layer "Edge.Cuts")
 		(uuid "3ba4afdd-504d-40d8-b30d-8e7956a73d48")
+	)
+	(gr_rect
+		(start 147.5 46.75)
+		(end 148.5 74)
+		(stroke
+			(width 0.05)
+			(type default)
+		)
+		(fill none)
+		(layer "Edge.Cuts")
+		(uuid "5ef0bcdb-13f0-48e2-8e54-ee921d23a30e")
 	)
 	(gr_rect
 		(start 193.75 85.75)
@@ -10374,6 +10396,17 @@
 		(uuid "67709065-6227-42ac-94a9-e0bb5276771d")
 	)
 	(gr_rect
+		(start 147.5 76.5)
+		(end 148.5 111)
+		(stroke
+			(width 0.05)
+			(type default)
+		)
+		(fill none)
+		(layer "Edge.Cuts")
+		(uuid "6fcc28b1-0f0a-4d29-bbcd-fec68a87df72")
+	)
+	(gr_rect
 		(start 174.75 85.75)
 		(end 177.75 140.75)
 		(stroke
@@ -10383,17 +10416,6 @@
 		(fill none)
 		(layer "Edge.Cuts")
 		(uuid "905b3480-de97-4f3e-afe1-41622e0ceb4d")
-	)
-	(gr_rect
-		(start 148.5 44.25)
-		(end 247.5 143.25)
-		(stroke
-			(width 0.1)
-			(type default)
-		)
-		(fill none)
-		(layer "Edge.Cuts")
-		(uuid "a6c3a6a1-4971-40bd-bd9b-1483373f5ce3")
 	)
 	(gr_rect
 		(start 212.75 85.75)
@@ -10408,7 +10430,7 @@
 	)
 	(gr_rect
 		(start 48.5 44.25)
-		(end 147.5 143.25)
+		(end 247.5 143.25)
 		(stroke
 			(width 0.1)
 			(type default)
