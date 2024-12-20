@@ -13,7 +13,7 @@ This program is the firmware for the MixLit Lite, this program will only use a M
 
 #define NUM_OF_SLIDERS 5
 
-const int Sliders[NUM_OF_SLIDERS] = {A1, A2, A3, A4, A5};
+const int Sliders[NUM_OF_SLIDERS] = {A4, A3, A2, A1, A0};
 int prevSliderState[NUM_OF_SLIDERS];
 int SliderState[NUM_OF_SLIDERS];
 
@@ -21,6 +21,7 @@ bool needsUpdate = true;
 
 void setup()
 {
+  Serial.begin(115200);
   while (!Serial)
   {
     delay(10);
@@ -33,7 +34,7 @@ void loop()
 
   for (int i = 0; i < NUM_OF_SLIDERS; i++)
   {
-    SliderState[i] = analogRead(Sliders[i]);
+    SliderState[i] = 1024 - analogRead(Sliders[i]);
 
     if (abs(SliderState[i] - prevSliderState[i]) > 10)
     {
