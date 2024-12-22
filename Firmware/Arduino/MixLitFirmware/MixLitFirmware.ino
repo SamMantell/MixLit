@@ -27,38 +27,35 @@ RGB values are sent as 24 bits over 6 HEX values, the brightness of the LED can 
 
 #include <FastLED.h>
 
-#ifdef __AVR__
-#endif
-
+// Definitions for MixLit specifications
+#define NUM_OF_SLIDERS 5
+#define NUM_OF_POTENTIOMETERS 3
 #define NUM_OF_LED_STRIPS 5
 #define NUM_OF_LEDS_PER_STRIP 8
+#define NUM_OF_BUTTONS 5
 
-String serialDataFromPC;
+// Pin Definitions
+const int Sliders[NUM_OF_SLIDERS] = {A4, A3, A2, A1, A0};
+const int Potentiometers[NUM_OF_POTENTIOMETERS] = {A7, A6, A5};
+const int LedStrips[NUM_OF_LED_STRIPS] = {11, 10, 9, 8, 7};
+const int Buttons[NUM_OF_BUTTONS] = {6, 5, 4, 3, 2};
+const String ButtonNames[NUM_OF_BUTTONS] = {"A", "B", "C", "D", "E"};
 
-const int Sliders[NUM_OF_LED_STRIPS] = {A0, A1, A2, A3, A4};
-int prevSliderState[NUM_OF_LED_STRIPS];
-int SliderState[NUM_OF_LED_STRIPS];
+// State Variables
+int previousState[NUM_OF_SLIDERS + NUM_OF_POTENTIOMETERS];
+int currentState[NUM_OF_SLIDERS + NUM_OF_POTENTIOMETERS];
 
-bool isAnimated = false;
-bool isVoiceMeter = false;
-bool needsUpdate = true;
+bool previousButtonState[NUM_OF_BUTTONS];
+bool currentButtonState[NUM_OF_BUTTONS];
 
-char tempFullHexStorage[128];
-char tempPartHexStorage[128];
-
-uint32_t HEX_VALUE[8];
-int SliderToChange;
-
-long currentMillis;
-long lastMillis;
-
-const int delayBetweenUpdates = 10;
-
-int loops = 0;
-
-int colorIndexOffset;
-
+// CRGB Definitions
 CRGB leds[NUM_OF_LED_STRIPS][NUM_OF_LEDS_PER_STRIP];
+
+
+// LED Strip Variables for Colour Control
+bool isAnimated = false;
+uint8_t ColorIndex;
+int colorIndexOffset;
 
 CRGBPalette16 All_ColorPallete[NUM_OF_LED_STRIPS] = 
 {
@@ -84,8 +81,18 @@ CRGBPalette16 All_ColorPallete[NUM_OF_LED_STRIPS] =
                   )
 };
 
-uint8_t ColorIndex;
+// Variables for Serial Recieve
+char tempFullHexStorage[128];
+char tempPartHexStorage[128];
+uint32_t HEX_VALUE[8];
+int SliderToChange;
+bool needsUpdate;
 
+// Strings for Sending Data to Software
+String stringToSendToSoftware;
+String serialDataFromPC;
+
+// SetLEDs Function for Led Strip Control
 void setLEDs(int iCurrentValue, int ledStrip)
 {
   if (isAnimated) colorIndexOffset++;
@@ -108,6 +115,7 @@ void setLEDs(int iCurrentValue, int ledStrip)
   }
 }
 
+// Function to read data from the pc and use it to set the LED Colours on the MixLit
 void readSerialDataAndSetLEDs() {
   serialDataFromPC = Serial.readString();
 
@@ -147,72 +155,100 @@ void readSerialDataAndSetLEDs() {
   needsUpdate = true;
 }
 
-
 void setup()
 {
   Serial.begin(115200);
 
-  pinMode(A0, INPUT);
-  pinMode(A1, INPUT);
-  pinMode(A2, INPUT);
-  //pinMode(A3, INPUT);
-  //pinMode(A4, INPUT);
-  pinMode(A5, OUTPUT);
-  pinMode(A6, OUTPUT);
-  pinMode(A7, OUTPUT);
+  for (int i = 0; i > NUM_OF_SLIDERS; i++)
+  {
+    pinMode(Sliders[i], INPUT);
+  }
 
+  for (int i = 0; i > NUM_OF_POTENTIOMETERS; i++)
+  {
+    pinMode(Potentiometers[i], INPUT);
+  }
+
+  for (int i = 0; i > NUM_OF_BUTTONS; i++)
+  {
+    pinMode(Buttons[i], INPUT);
+  }
+
+  // FastLED.addLeds doesnt support arrays
   FastLED.addLeds<WS2812, 11, GRB>(leds[0], NUM_OF_LEDS_PER_STRIP);
-  FastLED.addLeds<WS2812, 12, GRB>(leds[1], NUM_OF_LEDS_PER_STRIP);
-  FastLED.addLeds<WS2812, 13, GRB>(leds[2], NUM_OF_LEDS_PER_STRIP);
-  FastLED.addLeds<WS2812, 14, GRB>(leds[3], NUM_OF_LEDS_PER_STRIP);
-  FastLED.addLeds<WS2812, 15, GRB>(leds[4], NUM_OF_LEDS_PER_STRIP);
+  FastLED.addLeds<WS2812, 10, GRB>(leds[1], NUM_OF_LEDS_PER_STRIP);
+  FastLED.addLeds<WS2812, 9, GRB>(leds[2], NUM_OF_LEDS_PER_STRIP);
+  FastLED.addLeds<WS2812, 8, GRB>(leds[3], NUM_OF_LEDS_PER_STRIP);
+  FastLED.addLeds<WS2812, 7, GRB>(leds[4], NUM_OF_LEDS_PER_STRIP);
 
-  FastLED.setBrightness(10);
+  // Max is 255
+  FastLED.setBrightness(64);
 }
 
 void loop()
 {
-  String builtString = String("");
+  stringToSendToSoftware = "";
 
-  for (int i = 0; i < NUM_OF_LED_STRIPS; i++)
+  for (int i = 0; i < NUM_OF_SLIDERS; i++)
   {
-    SliderState[i] = 1024 - analogRead(Sliders[i]);
+    //Serial.println("Reading Slider: " + String(i));
+    currentState[i] = 1023 - analogRead(Sliders[i]);
+  }
+  for (int i = NUM_OF_SLIDERS; i < NUM_OF_SLIDERS + NUM_OF_POTENTIOMETERS; i++)
+  {
+    //Serial.println("Reading Potentiometer: " + String(i));
+    currentState[i] = analogRead(Sliders[i]);
+  }
+  for (int i = 0; i < NUM_OF_BUTTONS; i++)
+  {
+    currentButtonState[i] = digitalRead(Buttons[i]);
+    //Serial.println("Reading Button: " + String(i));
+  }
 
-    if ((abs(SliderState[i] - prevSliderState[i]) > 1) || isAnimated || needsUpdate)
+  for (int i = 0; i < NUM_OF_SLIDERS/* + NUM_OF_POTENTIOMETERS*/; i++)
+  {
+    if ((abs(currentState[i] - previousState[i]) > 2) || isAnimated || needsUpdate)
     {
-      //setLEDs(SliderState[i], i);
-      //FastLED.show();
+      setLEDs(currentState[i], i);
+      FastLED.show();
     }
 
-    if (abs(SliderState[i] - prevSliderState[i]) > 2)
+    if ((abs(currentState[i] - previousState[i]) > 2))
     {
-      prevSliderState[i] = SliderState[i];
+      if (currentState[i] > 1020)
+      {
+        currentState[i] = 1023;
+      }
+      else if (currentState[i] < 3)
+      {
+        currentState[i] = 0;
+      }
 
-      builtString += String(i) + "|" + String(SliderState[i]) + "|";
+      previousState[i] = currentState[i];
+      stringToSendToSoftware += i;
+      stringToSendToSoftware += "|";
+      stringToSendToSoftware += previousState[i];
+      stringToSendToSoftware += "|";
     }
   }
-  if (builtString != "") Serial.println(builtString);
 
-  if (needsUpdate = true) needsUpdate = false;
-  
-  if (Serial.available() > 0)
+  for (int i = 0; i < NUM_OF_BUTTONS; i++)
   {
-    readSerialDataAndSetLEDs();
+    if (currentButtonState[i] != previousButtonState[i])
+    {
+      previousButtonState[i] = currentButtonState[i];
+
+      stringToSendToSoftware += ButtonNames[i];
+      stringToSendToSoftware += "|";
+      stringToSendToSoftware += int(currentButtonState[i]);
+      stringToSendToSoftware += "|";
+    }
   }
-  
-  delay(delayBetweenUpdates);
 
-  /*
-  // Optimisation Check
-  loops++;
-
-  long currentMillis = millis() - lastMillis;
-  if (loops == 100)
+  if (stringToSendToSoftware != "")
   {
-    lastMillis += currentMillis;
-    loops = 0;
-    Serial.println(currentMillis);
+    Serial.println(stringToSendToSoftware);
   }
-  */
-  
+
+  delay(20);
 }
