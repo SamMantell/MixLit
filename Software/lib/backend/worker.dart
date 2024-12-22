@@ -4,7 +4,7 @@ import 'dart:isolate';
 import 'package:flutter_libserialport/flutter_libserialport.dart';
 
 class Worker {
-  final _serialPort = SerialPort('COM17');
+  final _serialPort = SerialPort('COM20');
   final StreamController<Map<int, int>> _sliderStreamController = StreamController.broadcast();
   final StreamController<String> _rawDataStreamController = StreamController.broadcast();
   late final SendPort _isolateSendPort;
@@ -24,8 +24,19 @@ class Worker {
     }
 
     _serialPort.config.baudRate = 115200;
-    _serialPort.config.stopBits = 1;
+    _serialPort.config.bits = 8;
     _serialPort.config.parity = SerialPortParity.none;
+    _serialPort.config.stopBits = 1;
+    _serialPort.config.setFlowControl(SerialPortFlowControl.none);
+
+    
+
+    String str = '40FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF';
+    Uint8List uint8list = Uint8List.fromList(str.codeUnits);
+    print (_serialPort.write(uint8list));
+
+
+
 
     _receivePort = ReceivePort();
     _isolate = await Isolate.spawn(_isolateEntry, _receivePort.sendPort);

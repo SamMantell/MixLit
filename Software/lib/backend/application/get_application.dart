@@ -1,5 +1,3 @@
-// lib/backend/application/get_application.dart
-
 import 'package:win32audio/win32audio.dart';
 
 class ApplicationManager {
@@ -16,14 +14,27 @@ class ApplicationManager {
   void adjustVolume(int sliderIndex, double sliderValue) {
     ProcessVolume? appProcess = assignedApplications[sliderIndex];
     if (appProcess != null) {
-      // Scale sliderValue from 0-1024 to 0-100 and round to the nearest integer
       int volumeLevel = ((sliderValue / 1024) * 100).round();
+      double floatVolumeLevel = volumeLevel / 100;
 
-      // Set the volume only if it's different from the current level to reduce updates
-      if (appProcess.peakVolume * 100 != volumeLevel) {
-        Audio.setAudioMixerVolume(appProcess.processId, volumeLevel / 100);
-        print("Set volume of ${appProcess.processPath} to $volumeLevel%");
+      // Apply the volume adjustment
+      Audio.setAudioMixerVolume(appProcess.processId, floatVolumeLevel);
+
+      // Mute by setting to a very low level
+      if (volumeLevel == 0) {
+        Audio.setAudioMixerVolume(appProcess.processId, 0.0001);
       }
-    }
+
+      print(
+          "Set volume of ${appProcess.processPath} to $volumeLevel%\nsliderValue: $sliderValue\nvolumeLevel: $floatVolumeLevel");
+    } else {
+    print("No application assigned to this slider.");
   }
+  }
+
+  void adjustDeviceVolume(double sliderValue) {
+  int volumeLevel = ((sliderValue / 1024) * 100).round();
+  Audio.setVolume(volumeLevel / 100, AudioDeviceType.output);
+  print("Set device volume to $volumeLevel%");
+}
 }

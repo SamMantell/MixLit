@@ -4,7 +4,9 @@
 
 list(APPEND FLUTTER_PLUGIN_LIST
   flutter_libserialport
+  url_launcher_windows
   win32audio
+  window_to_front
 )
 
 list(APPEND FLUTTER_FFI_PLUGIN_LIST

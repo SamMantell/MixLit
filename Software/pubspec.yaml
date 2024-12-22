@@ -38,6 +38,7 @@ dependencies:
   flutter_libserialport: ^0.4.0
   win32: ^5.5.4
   win32audio:
+  appwrite: ^13.1.0
 
 dev_dependencies:
   flutter_test:
