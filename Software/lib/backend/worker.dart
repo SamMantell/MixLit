@@ -4,7 +4,7 @@ import 'dart:isolate';
 import 'package:flutter_libserialport/flutter_libserialport.dart';
 
 class Worker {
-  final _serialPort = SerialPort('COM17');
+  final _serialPort = SerialPort('COM6');
   final StreamController<Map<int, int>> _sliderStreamController = StreamController.broadcast();
   final StreamController<String> _rawDataStreamController = StreamController.broadcast();
   late final SendPort _isolateSendPort;
