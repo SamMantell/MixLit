@@ -9,7 +9,7 @@ class Worker {
   final StreamController<String> _rawDataStreamController = StreamController.broadcast();
   late final SendPort _isolateSendPort;
   late final ReceivePort _receivePort;
-  Isolate? _isolate;
+  Isolate? _isolate; 
   
   Stream<Map<int, int>> get sliderStream => _sliderStreamController.stream;
   Stream<String> get rawDataStream => _rawDataStreamController.stream;
