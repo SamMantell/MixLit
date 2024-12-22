@@ -27,29 +27,129 @@ RGB values are sent as 24 bits over 6 HEX values, the brightness of the LED can 
 
 #include <FastLED.h>
 
-#define NUM_OF_LED_STRIPS 5
+// Definitions for MixLit specifications
 #define NUM_OF_SLIDERS 5
 #define NUM_OF_POTENTIOMETERS 3
+#define NUM_OF_LED_STRIPS 5
 #define NUM_OF_LEDS_PER_STRIP 8
+#define NUM_OF_BUTTONS 5
 
-String serialDataFromPC;
+// Pin Definitions
+const int Sliders[NUM_OF_SLIDERS] = {A4, A3, A2, A1, A0};
+const int Potentiometers[NUM_OF_POTENTIOMETERS] = {A7, A6, A5};
+const int LedStrips[NUM_OF_LED_STRIPS] = {11, 10, 9, 8, 7};
+const int Buttons[NUM_OF_BUTTONS] = {6, 5, 4, 3, 2};
 
-const int Sliders[NUM_OF_SLIDERS] = {A0, A1, A2, A3, A4};
-const int Potentiometers[NUM_OF_POTENTIOMETERS] = {A5, A6, A7};
-
-const int LedStrips[NUM_OF_LED_STRIPS] = {11, 12, 13, 14, 15};
-
+// State Variables
 int previousState[NUM_OF_SLIDERS + NUM_OF_POTENTIOMETERS];
 int currentState[NUM_OF_SLIDERS + NUM_OF_POTENTIOMETERS];
 
+// CRGB Definitions
 CRGB leds[NUM_OF_LED_STRIPS][NUM_OF_LEDS_PER_STRIP];
 
+
+// LED Strip Variables for Colour Control
 bool isAnimated = false;
+uint8_t ColorIndex;
+int colorIndexOffset;
+
+CRGBPalette16 All_ColorPallete[NUM_OF_LED_STRIPS] = 
+{
+  CRGBPalette16   (
+                    0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF,
+                    0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF
+                  ),
+  CRGBPalette16   (
+                    0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF, 0xFFFFFF, 0xFF0000, 0xFF0000,  0xFF0000,
+                    0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF
+                  ),
+  CRGBPalette16   (
+                    0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF, 0xFFFFFF, 0x00FF00, 0x00FF00,  0x00FF00,
+                    0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF
+                  ),
+  CRGBPalette16   (
+                    0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF, 0xFFFFFF, 0x0000FF, 0x0000FF,  0x0000FF,
+                    0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF
+                  ),
+  CRGBPalette16   (
+                    0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF, 0xFFFFFF, 0xFF00FF, 0xFF00FF,  0xFF00FF,
+                    0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF
+                  )
+};
+
+// Variables for Serial Recieve
 char tempFullHexStorage[128];
 char tempPartHexStorage[128];
 uint32_t HEX_VALUE[8];
+int SliderToChange;
+bool needsUpdate;
 
-String test = "";
+// Strings for Sending Data to Software
+String stringToSendToSoftware;
+String serialDataFromPC;
+
+// SetLEDs Function for Led Strip Control
+void setLEDs(int iCurrentValue, int ledStrip)
+{
+  if (isAnimated) colorIndexOffset++;
+
+  else colorIndexOffset = 0;
+
+  // this will take the 10 bit value from the slider, and use bitshift and remainder calculation to get the number of leds on and the brightness of the final one.
+  uint8_t iNumOfLedsOn = iCurrentValue >> 7;
+  uint8_t iFinalLedBrightness = (iCurrentValue % 128) << 1;
+
+  for (int i = 0; i < 8; i++)
+  {
+    ColorIndex = 16*i + colorIndexOffset;
+
+    if (i == (NUM_OF_LEDS_PER_STRIP - 1 - iNumOfLedsOn))        leds[ledStrip][i] = ColorFromPalette( All_ColorPallete[ledStrip], ColorIndex, iFinalLedBrightness);
+  
+    else if (i > (NUM_OF_LEDS_PER_STRIP - 1 - iNumOfLedsOn))    leds[ledStrip][i] = ColorFromPalette( All_ColorPallete[ledStrip], ColorIndex, 255);
+      
+    else                                                        leds[ledStrip][i] = ColorFromPalette( All_ColorPallete[ledStrip], ColorIndex, 0);
+  }
+}
+
+// Function to read data from the pc and use it to set the LED Colours on the MixLit
+void readSerialDataAndSetLEDs() {
+  serialDataFromPC = Serial.readString();
+
+  serialDataFromPC.toCharArray(tempFullHexStorage, 128);
+
+  tempPartHexStorage[1] = 0;
+  tempPartHexStorage[2] = 0;
+  tempPartHexStorage[3] = 0;
+  tempPartHexStorage[4] = 0;
+  tempPartHexStorage[5] = 0;
+
+  tempPartHexStorage[0] = tempFullHexStorage[0];
+  HEX_VALUE[0] = strtol(tempPartHexStorage, NULL, 16);
+  SliderToChange = HEX_VALUE[0];
+
+  tempPartHexStorage[0] = tempFullHexStorage[1];
+  HEX_VALUE[0] = strtol(tempPartHexStorage, NULL, 16);
+  isAnimated = bool(HEX_VALUE[0]);
+
+  for (int i = 0; i < 16; i++)
+  {
+    for (int j = 0; j < 6; j++)
+    {
+      tempPartHexStorage[j] = tempFullHexStorage[2+(6*i+j)];
+    }
+    HEX_VALUE[i] = strtol(tempPartHexStorage, NULL, 16);
+  }
+
+  All_ColorPallete[SliderToChange] = 
+  {
+    CRGBPalette16   (
+                        HEX_VALUE[0], HEX_VALUE[1], HEX_VALUE[2],  HEX_VALUE[3], HEX_VALUE[4], HEX_VALUE[5], HEX_VALUE[6],  HEX_VALUE[7],
+                        HEX_VALUE[8], HEX_VALUE[9], HEX_VALUE[10],  HEX_VALUE[11], HEX_VALUE[12], HEX_VALUE[13], HEX_VALUE[14],  HEX_VALUE[15]
+                    )
+  };
+
+  needsUpdate = true;
+}
 
 void setup()
 {
@@ -64,29 +164,42 @@ void setup()
   {
     pinMode(Potentiometers[i], INPUT);
   }
+
+  // FastLED.addLeds doesnt support arrays
+  FastLED.addLeds<WS2812, 11, GRB>(leds[0], NUM_OF_LEDS_PER_STRIP);
+  FastLED.addLeds<WS2812, 10, GRB>(leds[1], NUM_OF_LEDS_PER_STRIP);
+  FastLED.addLeds<WS2812, 9, GRB>(leds[2], NUM_OF_LEDS_PER_STRIP);
+  FastLED.addLeds<WS2812, 8, GRB>(leds[3], NUM_OF_LEDS_PER_STRIP);
+  FastLED.addLeds<WS2812, 7, GRB>(leds[4], NUM_OF_LEDS_PER_STRIP);
+
+  // Max is 255
+  FastLED.setBrightness(64);
 }
 
 void loop()
 {
-  test = "";
+  stringToSendToSoftware = "";
 
   for (int i = 0; i < NUM_OF_SLIDERS; i++)
   {
     //Serial.println("Reading Slider: " + String(i));
-    currentState[i] = analogRead(Sliders[i]);
+    currentState[i] = 1023 - analogRead(Sliders[i]);
   }
-  for (int i = NUM_OF_SLIDERS + 1; i < NUM_OF_POTENTIOMETERS + NUM_OF_SLIDERS; i++)
+  for (int i = NUM_OF_SLIDERS; i < NUM_OF_SLIDERS + NUM_OF_POTENTIOMETERS; i++)
   {
     //Serial.println("Reading Potentiometer: " + String(i));
     currentState[i] = analogRead(Sliders[i]);
   }
 
-  for (int i = 0; i < NUM_OF_SLIDERS/* NUM_OF_POTENTIOMETERS*/; i++)
+  for (int i = 0; i < NUM_OF_SLIDERS/* + NUM_OF_POTENTIOMETERS*/; i++)
   {
-    //Serial.println("Analysing Value: " + String(i));
-    currentState[i] = 1023 - analogRead(Sliders[i]);
+    if ((abs(currentState[i] - previousState[i]) > 2) || isAnimated || needsUpdate)
+    {
+      setLEDs(currentState[i], i);
+      FastLED.show();
+    }
 
-    if (abs(currentState[i] - previousState[i]) > 2)
+    if ((abs(currentState[i] - previousState[i]) > 2))
     {
       if (currentState[i] > 1020)
       {
@@ -96,31 +209,18 @@ void loop()
       {
         currentState[i] = 0;
       }
+
       previousState[i] = currentState[i];
-      test += i;
-      test += "|";
-      test += previousState[i];
-      test += "|";
+      stringToSendToSoftware += i;
+      stringToSendToSoftware += "|";
+      stringToSendToSoftware += previousState[i];
+      stringToSendToSoftware += "|";
     }
-    /*
-    if ((currentState[i] - previousState[i] > 1))
-    {
-      if (currentState[i] == 1022)
-      {
-        currentState[i] = 1023;
-      }
-      else if (currentState[i] == 1)
-      {
-        currentState[i] = 0;
-      }
-      previousState[i] = currentState[i];
-      builtString += String(i) + "|" + String(currentState[i]) + "|";
-    }
-    */
   }
-  if (test != "")
+
+  if (stringToSendToSoftware != "")
   {
-    Serial.println(test);
+    Serial.println(stringToSendToSoftware);
   }
 
   delay(20);
