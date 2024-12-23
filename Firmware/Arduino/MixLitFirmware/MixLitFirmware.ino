@@ -181,6 +181,18 @@ void setup()
   FastLED.addLeds<WS2812, 8, GRB>(leds[3], NUM_OF_LEDS_PER_STRIP);
   FastLED.addLeds<WS2812, 7, GRB>(leds[4], NUM_OF_LEDS_PER_STRIP);
 
+  while (true)
+  {
+    String initialConnection = Serial.readString();
+    if (initialConnection == "mixlit\n")
+    {
+      Serial.println("Software Connected");
+      return;
+    }
+    Serial.println("?");
+    delay(200);
+  }
+
   // Max is 255
   FastLED.setBrightness(64);
 }
