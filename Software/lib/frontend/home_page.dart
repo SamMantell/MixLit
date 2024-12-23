@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:mixlit/frontend/menu/slider_assignment.dart';
 import 'package:mixlit/frontend/components/slider_container.dart';
 import 'package:mixlit/frontend/menu/dialog/warning.dart';
+import 'package:mixlit/frontend/menu/notification/toast.dart';
 import 'package:mixlit/backend/worker.dart';
 import 'package:mixlit/backend/application/get_application.dart';
 
@@ -35,6 +36,27 @@ class _HomePageState extends State<HomePage> {
         FailedToConnectToDeviceDialog.show(
           context, 
           "Couldn't detect your MixLit, app will maintain basic functionality."
+        );
+      }
+    });
+
+    // Listen for connection status changes
+    _worker.connectionStream.listen((connected) {
+      if (connected) {
+        Toast.show(
+          context: context,
+          icon: Icons.usb_rounded,
+          message: "MixLit device connected",
+          color: Colors.green,
+          duration: const Duration(seconds: 3),
+        );
+      } else {
+        Toast.show(
+          context: context,
+          icon: Icons.usb_off_rounded,
+          message: "MixLit device disconnected",
+          color: Colors.red,
+          duration: const Duration(seconds: 3),
         );
       }
     });

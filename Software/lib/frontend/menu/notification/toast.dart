@@ -41,9 +41,9 @@ class Toast extends StatefulWidget {
     Overlay.of(context).insert(overlayEntry);
 
     // Remove the toast after duration + animation time
-    Future.delayed(duration + const Duration(milliseconds: 500), () {
-      overlayEntry.remove();
-    });
+    //Future.delayed(duration + const Duration(milliseconds: 500), () {
+    //  overlayEntry.remove();
+    //});
   }
 }
 
@@ -104,8 +104,6 @@ class _ToastState extends State<Toast> with SingleTickerProviderStateMixin {
         return Positioned(
           bottom: 32.0 + (_slideAnimation.value * 100),
           right: _slideAnimation.value * -400,
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
             child: Container(
               width: 300,
               padding: const EdgeInsets.all(16),
@@ -131,6 +129,7 @@ class _ToastState extends State<Toast> with SingleTickerProviderStateMixin {
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 14,
+                            decoration: TextDecoration.none,
                           ),
                         ),
                       ),
@@ -152,7 +151,6 @@ class _ToastState extends State<Toast> with SingleTickerProviderStateMixin {
                 ],
               ),
             ),
-          ),
         );
       },
     );

@@ -5,45 +5,100 @@ import 'package:flutter_libserialport/flutter_libserialport.dart';
 
 class Worker {
   final _serialPort = SerialPort('COM20');
+  var config = SerialPortConfig()
+        ..baudRate = 115200
+        ..bits = 8
+        ..parity = SerialPortParity.none
+        ..stopBits = 1
+        ..xonXoff = 0
+        ..rts = 1
+        ..cts = 0
+        ..dsr = 0
+        ..dtr = 1;
   final StreamController<Map<int, int>> _sliderStreamController = StreamController.broadcast();
   final StreamController<String> _rawDataStreamController = StreamController.broadcast();
+  final StreamController<bool> _connectionStreamController = StreamController.broadcast();
+  Timer? _connectionCheckTimer;
   late final SendPort _isolateSendPort;
-  late final ReceivePort _receivePort;
+  late final ReceivePort _receivePort = ReceivePort();
   Isolate? _isolate;
-
   bool deviceConnected = false;
+  bool _isListening = false;
   
   Stream<Map<int, int>> get sliderStream => _sliderStreamController.stream;
   Stream<String> get rawDataStream => _rawDataStreamController.stream;
+  Stream<bool> get connectionStream => _connectionStreamController.stream;
 
   Worker() {
-    _initializePort();
+    _startConnectionCheck();
+  }
+
+  void _startConnectionCheck() {
+    _checkConnection();
+    _connectionCheckTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
+      _checkConnection();
+    });
+  }
+
+  Future<void> _checkConnection() async {
+    if (deviceConnected && _isListening){
+      return;
+    }
+    bool wasConnected = deviceConnected;
+    try {
+      if (deviceConnected) {
+        _receivePort.close();
+        _isolate?.kill(priority: Isolate.immediate);
+        _isolate = null;
+      }
+      print("Attempting to connect to COM20...");
+      if (_serialPort.isOpen && !deviceConnected) {
+        print("Port is already open, closing first...");
+        _serialPort.endBreak();
+        _serialPort.close();
+        await Future.delayed(const Duration(milliseconds: 100));
+      }
+
+      if (!_isListening) {
+        print("Attempting to open port...");
+        _serialPort.config = config;
+        bool opened = _serialPort.openReadWrite();
+        print("Port open result: $opened");
+        if (opened) {
+          deviceConnected = true;
+          if (!wasConnected) {
+            print("Successfully connected to device");
+            _connectionStreamController.add(true);
+            _initializePort();
+          }
+        } else {
+          _serialPort.close();
+          _receivePort.close();
+          _connectionStreamController.add(false);
+        }
+      }
+    } catch (e, stackTrace) {
+      print("Error connecting to COM port: $e");
+      print("Stack trace: $stackTrace");
+      deviceConnected = false;
+      if (wasConnected) {
+        _connectionStreamController.add(false);
+      }
+    }
   }
 
   Future<void> _initializePort() async {
-    if (_serialPort.openReadWrite()) {
-      deviceConnected = true;
-      _serialPort.config.baudRate = 115200;
-      _serialPort.config.bits = 8;
-      _serialPort.config.parity = SerialPortParity.none;
-      _serialPort.config.stopBits = 1;
-      _serialPort.config.setFlowControl(SerialPortFlowControl.none);
-
-
-
+    if (!_isListening && deviceConnected) {
+      _serialPort.config = config;
+      
       String str = '40FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF';
       Uint8List uint8list = Uint8List.fromList(str.codeUnits);
-      print (_serialPort.write(uint8list));
+      _serialPort.write(uint8list);
 
-
-
-
-      _receivePort = ReceivePort();
-      _isolate = await Isolate.spawn(_isolateEntry, _receivePort.sendPort);
-
+      _isolate ??= await Isolate.spawn(_isolateEntry, _receivePort.sendPort);
+      
       _receivePort.listen((message) {
         if (message is SendPort) {
-
           _isolateSendPort = message;
         } else if (message is Map<int, int>) {
           _sliderStreamController.add(message);
@@ -51,17 +106,28 @@ class Worker {
           _rawDataStreamController.add(message);
         }
       });
-    } else {
-      deviceConnected = false;
-    }
 
-    if (deviceConnected) {
-      // Listen to serial port data and send it to the isolate for processing
-      SerialPortReader(_serialPort).stream.listen((Uint8List data) {
-        _isolateSendPort.send(data);
-            });
-    }
+      if (!_isListening) {
+      // Start listening to serial port data
+      SerialPortReader(_serialPort).stream.listen(
+        (Uint8List data) {
+          _isolateSendPort.send(data);
+        },
+        onDone: () {
+          _isListening = false;
+          deviceConnected = false;
+          _connectionStreamController.add(false);
+        },
+        onError: (error) {
+          _isListening = false;
+          deviceConnected = false;
+          _connectionStreamController.add(false);
+        }
+      );
+      }
 
+      _isListening = true;
+    }
   }
 
   static void _isolateEntry(SendPort mainSendPort) {
@@ -105,25 +171,14 @@ class Worker {
     if (sliderData.isNotEmpty) {
       mainSendPort.send(sliderData);
     }
-
-    //if (line.contains('|')) {
-    //  List<String> parts = line.split('|');
-    //  if (parts.length == 2) {
-    //    try {
-    //      int sliderId = int.parse(parts[0].trim());
-    //      int sliderValue = int.parse(parts[1].trim());
-    //      mainSendPort.send({sliderId: sliderValue});
-    //    } catch (e) {
-    //      print("Error parsing slider data: $e");
-    //    }
-    //  }
-    //}
   }
 
   void dispose() {
+    _connectionCheckTimer?.cancel();
     _serialPort.close();
     _sliderStreamController.close();
     _rawDataStreamController.close();
+    _connectionStreamController.close();
     _receivePort.close();
     _isolate?.kill(priority: Isolate.immediate);
   }
