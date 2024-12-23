@@ -187,13 +187,11 @@ void setup()
     if (initialConnection == "?\n")
     {
       Serial.println("mixlit");
+      FastLED.setBrightness(128);
       return;
     }
     delay(200);
   }
-
-  // Max is 255
-  FastLED.setBrightness(64);
 }
 
 void loop()
