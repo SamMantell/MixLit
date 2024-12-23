@@ -184,12 +184,11 @@ void setup()
   while (true)
   {
     String initialConnection = Serial.readString();
-    if (initialConnection == "mixlit\n")
+    if (initialConnection == "?\n")
     {
-      Serial.println("Software Connected");
+      Serial.println("mixlit");
       return;
     }
-    Serial.println("?");
     delay(200);
   }
 
