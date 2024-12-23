@@ -10,7 +10,7 @@ class MutedRedLine extends CustomPainter {
 
     // Draw a diagonal line from top-left to bottom-right
     canvas.drawLine(
-      Offset(0, 0),
+      const Offset(0, 0),
       Offset(size.width, size.height),
       paint,
     );

@@ -39,10 +39,14 @@ const int Sliders[NUM_OF_SLIDERS] = {A4, A3, A2, A1, A0};
 const int Potentiometers[NUM_OF_POTENTIOMETERS] = {A7, A6, A5};
 const int LedStrips[NUM_OF_LED_STRIPS] = {11, 10, 9, 8, 7};
 const int Buttons[NUM_OF_BUTTONS] = {6, 5, 4, 3, 2};
+const String ButtonNames[NUM_OF_BUTTONS] = {"A", "B", "C", "D", "E"};
 
 // State Variables
 int previousState[NUM_OF_SLIDERS + NUM_OF_POTENTIOMETERS];
 int currentState[NUM_OF_SLIDERS + NUM_OF_POTENTIOMETERS];
+
+bool previousButtonState[NUM_OF_BUTTONS];
+bool currentButtonState[NUM_OF_BUTTONS];
 
 // CRGB Definitions
 CRGB leds[NUM_OF_LED_STRIPS][NUM_OF_LEDS_PER_STRIP];
@@ -165,6 +169,11 @@ void setup()
     pinMode(Potentiometers[i], INPUT);
   }
 
+  for (int i = 0; i > NUM_OF_BUTTONS; i++)
+  {
+    pinMode(Buttons[i], INPUT);
+  }
+
   // FastLED.addLeds doesnt support arrays
   FastLED.addLeds<WS2812, 11, GRB>(leds[0], NUM_OF_LEDS_PER_STRIP);
   FastLED.addLeds<WS2812, 10, GRB>(leds[1], NUM_OF_LEDS_PER_STRIP);
@@ -190,6 +199,11 @@ void loop()
     //Serial.println("Reading Potentiometer: " + String(i));
     currentState[i] = analogRead(Sliders[i]);
   }
+  for (int i = 0; i < NUM_OF_BUTTONS; i++)
+  {
+    currentButtonState[i] = digitalRead(Buttons[i]);
+    //Serial.println("Reading Button: " + String(i));
+  }
 
   for (int i = 0; i < NUM_OF_SLIDERS/* + NUM_OF_POTENTIOMETERS*/; i++)
   {
@@ -214,6 +228,19 @@ void loop()
       stringToSendToSoftware += i;
       stringToSendToSoftware += "|";
       stringToSendToSoftware += previousState[i];
+      stringToSendToSoftware += "|";
+    }
+  }
+
+  for (int i = 0; i < NUM_OF_BUTTONS; i++)
+  {
+    if (currentButtonState[i] != previousButtonState[i])
+    {
+      previousButtonState[i] = currentButtonState[i];
+
+      stringToSendToSoftware += ButtonNames[i];
+      stringToSendToSoftware += "|";
+      stringToSendToSoftware += int(currentButtonState[i]);
       stringToSendToSoftware += "|";
     }
   }

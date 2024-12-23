@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:mixlit/frontend/menu/slider_assignment.dart';
 import 'package:mixlit/frontend/components/slider_container.dart';
+import 'package:mixlit/frontend/menu/dialog/warning.dart';
 import 'package:mixlit/backend/worker.dart';
 import 'package:mixlit/backend/application/get_application.dart';
 
@@ -20,14 +21,23 @@ class _HomePageState extends State<HomePage> {
   final Worker _worker = Worker();
   final ApplicationManager _applicationManager = ApplicationManager();
 
-  List<double> _sliderValues = [0, 0, 0, 0, 0];
+  final List<double> _sliderValues = [0, 0, 0, 0, 0];
   List<ProcessVolume?> _assignedApps = [null, null, null, null, null];
-  Map<String, Uint8List?> _appIcons = {};
-  List<String> _sliderTags = ['unassigned', 'unassigned', 'unassigned', 'unassigned', 'unassigned'];
+  final Map<String, Uint8List?> _appIcons = {};
+  final List<String> _sliderTags = ['unassigned', 'unassigned', 'unassigned', 'unassigned', 'unassigned'];
 
   @override
   void initState() {
     super.initState();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_worker.deviceConnected) {
+        FailedToConnectToDeviceDialog.show(
+          context, 
+          "Couldn't detect your MixLit, app will maintain basic functionality."
+        );
+      }
+    });
 
     // Listen to the slider stream from Worker to update slider values
     _worker.sliderStream.listen((data) {

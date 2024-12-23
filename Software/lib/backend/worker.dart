@@ -10,6 +10,8 @@ class Worker {
   late final SendPort _isolateSendPort;
   late final ReceivePort _receivePort;
   Isolate? _isolate;
+
+  bool deviceConnected = false;
   
   Stream<Map<int, int>> get sliderStream => _sliderStreamController.stream;
   Stream<String> get rawDataStream => _rawDataStreamController.stream;
@@ -19,45 +21,47 @@ class Worker {
   }
 
   Future<void> _initializePort() async {
-    if (!_serialPort.openReadWrite()) {
-      print("Failed to open port");
+    if (_serialPort.openReadWrite()) {
+      deviceConnected = true;
+      _serialPort.config.baudRate = 115200;
+      _serialPort.config.bits = 8;
+      _serialPort.config.parity = SerialPortParity.none;
+      _serialPort.config.stopBits = 1;
+      _serialPort.config.setFlowControl(SerialPortFlowControl.none);
+
+
+
+      String str = '40FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF';
+      Uint8List uint8list = Uint8List.fromList(str.codeUnits);
+      print (_serialPort.write(uint8list));
+
+
+
+
+      _receivePort = ReceivePort();
+      _isolate = await Isolate.spawn(_isolateEntry, _receivePort.sendPort);
+
+      _receivePort.listen((message) {
+        if (message is SendPort) {
+
+          _isolateSendPort = message;
+        } else if (message is Map<int, int>) {
+          _sliderStreamController.add(message);
+        } else if (message is String) {
+          _rawDataStreamController.add(message);
+        }
+      });
+    } else {
+      deviceConnected = false;
     }
 
-    _serialPort.config.baudRate = 115200;
-    _serialPort.config.bits = 8;
-    _serialPort.config.parity = SerialPortParity.none;
-    _serialPort.config.stopBits = 1;
-    _serialPort.config.setFlowControl(SerialPortFlowControl.none);
-
-    
-
-    String str = '40FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF';
-    Uint8List uint8list = Uint8List.fromList(str.codeUnits);
-    print (_serialPort.write(uint8list));
-
-
-
-
-    _receivePort = ReceivePort();
-    _isolate = await Isolate.spawn(_isolateEntry, _receivePort.sendPort);
-
-    _receivePort.listen((message) {
-      if (message is SendPort) {
-
-        _isolateSendPort = message;
-      } else if (message is Map<int, int>) {
-        _sliderStreamController.add(message);
-      } else if (message is String) {
-        _rawDataStreamController.add(message);
-      }
-    });
-
-    // Listen to serial port data and send it to the isolate for processing
-    SerialPortReader(_serialPort).stream.listen((Uint8List data) {
-      if (_isolateSendPort != null) {
+    if (deviceConnected) {
+      // Listen to serial port data and send it to the isolate for processing
+      SerialPortReader(_serialPort).stream.listen((Uint8List data) {
         _isolateSendPort.send(data);
-      }
-    });
+            });
+    }
+
   }
 
   static void _isolateEntry(SendPort mainSendPort) {
