@@ -17,12 +17,7 @@ class ApplicationManager {
       // More precise volume calculation
       double volumeLevel = sliderValue / 1024;
       Audio.setAudioMixerVolume(appProcess.processId, volumeLevel);
-      if (volumeLevel <= 0.001) {
-        Audio.setAudioMixerVolume(appProcess.processId, 0);
-      }
-      
-      //muting
-      if (volumeLevel == 0) {
+      if (volumeLevel <= 0.009) {
         Audio.setAudioMixerVolume(appProcess.processId, 0.0001);
       }
 
