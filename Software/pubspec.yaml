@@ -39,6 +39,7 @@ dependencies:
   win32: ^5.5.4
   win32audio:
   appwrite: ^13.1.0
+  path_provider: ^2.1.5
 
 dev_dependencies:
   flutter_test:

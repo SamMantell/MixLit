@@ -36,14 +36,17 @@ RGB values are sent as 24 bits over 6 HEX values, the brightness of the LED can 
 
 // Pin Definitions
 const int Sliders[NUM_OF_SLIDERS] = {A4, A3, A2, A1, A0};
-const int Potentiometers[NUM_OF_POTENTIOMETERS] = {A7, A6, A5};
+const int Potentiometers[NUM_OF_POTENTIOMETERS] = {A5, A7, A6};
 const int LedStrips[NUM_OF_LED_STRIPS] = {11, 10, 9, 8, 7};
 const int Buttons[NUM_OF_BUTTONS] = {6, 5, 4, 3, 2};
 const String ButtonNames[NUM_OF_BUTTONS] = {"A", "B", "C", "D", "E"};
 
 // State Variables
-int previousState[NUM_OF_SLIDERS + NUM_OF_POTENTIOMETERS];
-int currentState[NUM_OF_SLIDERS + NUM_OF_POTENTIOMETERS];
+int previousSliderState[NUM_OF_SLIDERS];
+int currentSliderState[NUM_OF_SLIDERS];
+
+int currentPotentiometerState[NUM_OF_POTENTIOMETERS];
+int previousPotentiometerState[NUM_OF_POTENTIOMETERS];
 
 bool previousButtonState[NUM_OF_BUTTONS];
 bool currentButtonState[NUM_OF_BUTTONS];
@@ -181,8 +184,22 @@ void setup()
   FastLED.addLeds<WS2812, 8, GRB>(leds[3], NUM_OF_LEDS_PER_STRIP);
   FastLED.addLeds<WS2812, 7, GRB>(leds[4], NUM_OF_LEDS_PER_STRIP);
 
-  // Max is 255
-  FastLED.setBrightness(255);
+  while (true)
+  {
+    if (Serial.available())
+    {
+        char c = Serial.read();
+        
+        if (c == 63)
+        {
+            Serial.println("mixlit");
+            FastLED.setBrightness(10);
+            delay(20);
+            return;
+        }
+    }
+    delay(1);
+  }
 }
 
 void loop()
@@ -192,12 +209,12 @@ void loop()
   for (int i = 0; i < NUM_OF_SLIDERS; i++)
   {
     //Serial.println("Reading Slider: " + String(i));
-    currentState[i] = 1023 - analogRead(Sliders[i]);
+    currentSliderState[i] = 1023 - analogRead(Sliders[i]);
   }
-  for (int i = NUM_OF_SLIDERS; i < NUM_OF_SLIDERS + NUM_OF_POTENTIOMETERS; i++)
+  for (int i = 0; i < NUM_OF_POTENTIOMETERS; i++)
   {
-    //Serial.println("Reading Potentiometer: " + String(i));
-    currentState[i] = analogRead(Sliders[i]);
+    //Serial.println("Reading Slider: " + String(i));
+    currentPotentiometerState[i] =  analogRead(Potentiometers[i]);
   }
   for (int i = 0; i < NUM_OF_BUTTONS; i++)
   {
@@ -205,32 +222,55 @@ void loop()
     //Serial.println("Reading Button: " + String(i));
   }
 
-  for (int i = 0; i < NUM_OF_SLIDERS/* + NUM_OF_POTENTIOMETERS*/; i++)
+  for (int i = 0; i < NUM_OF_SLIDERS; i++)
   {
-    if ((abs(currentState[i] - previousState[i]) > 2) || isAnimated || needsUpdate)
+    if ((abs(currentSliderState[i] - previousSliderState[i]) > 3) || isAnimated || needsUpdate)
     {
-      setLEDs(currentState[i], i);
+      if (currentSliderState[i] > 1020)
+      {
+        currentSliderState[i] = 1023;
+      }
+      else if (currentSliderState[i] < 3)
+      {
+        currentSliderState[i] = 0;
+      }
+
+      setLEDs(currentSliderState[i], i);
       FastLED.show();
     }
 
-    if ((abs(currentState[i] - previousState[i]) > 2))
+    if ((abs(currentSliderState[i] - previousSliderState[i]) > 3))
     {
-      if (currentState[i] > 1020)
-      {
-        currentState[i] = 1023;
-      }
-      else if (currentState[i] < 3)
-      {
-        currentState[i] = 0;
-      }
-
-      previousState[i] = currentState[i];
+      previousSliderState[i] = currentSliderState[i];
       stringToSendToSoftware += i;
       stringToSendToSoftware += "|";
-      stringToSendToSoftware += previousState[i];
+      stringToSendToSoftware += previousSliderState[i];
       stringToSendToSoftware += "|";
     }
   }
+
+  /*
+  for (int i = 0; i < NUM_OF_POTENTIOMETERS; i++)
+  {
+    if ((abs(currentPotentiometerState[i] - previousPotentiometerState[i]) > 10))
+    {
+      if (currentPotentiometerState[i] > 1020)
+      {
+        currentPotentiometerState[i] = 1023;
+      }
+      else if (currentPotentiometerState[i] < 3)
+      {
+        currentPotentiometerState[i] = 0;
+      }
+
+      previousPotentiometerState[i] = currentPotentiometerState[i];
+      stringToSendToSoftware += NUM_OF_SLIDERS + i;
+      stringToSendToSoftware += "|";
+      stringToSendToSoftware += previousPotentiometerState[i];
+      stringToSendToSoftware += "|";
+    }
+  }
+  */
 
   for (int i = 0; i < NUM_OF_BUTTONS; i++)
   {
