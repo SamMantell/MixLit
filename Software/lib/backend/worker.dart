@@ -57,7 +57,7 @@ class Worker {
           final buffer = List<int>.empty(growable: true);
           
           // Set up manual reading for device detection
-          Timer.periodic(Duration(milliseconds: 50), (timer) async {
+          Timer.periodic(Duration(milliseconds: 1), (timer) async {
             if (deviceFound || !port.isOpen) {
               timer.cancel();
               return;
@@ -101,7 +101,7 @@ class Worker {
           port.flush();
 
           // Wait for response or timeout
-          await Future.delayed(const Duration(milliseconds: 2000));
+          await Future.delayed(const Duration(milliseconds: 600));
           
           if (!completer.isCompleted && !deviceFound) {
             port.close();
@@ -125,7 +125,7 @@ class Worker {
 
   void _startConnectionCheck() {
     _checkConnection();
-    _connectionCheckTimer = Timer.periodic(const Duration(seconds: 5), (timer) {
+    _connectionCheckTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       _checkConnection();
     });
   }
@@ -170,7 +170,7 @@ class Worker {
       );
       
       await completer.future.timeout(
-        const Duration(seconds: 2),
+        const Duration(seconds: 1),
         onTimeout: () {
           print("Isolate setup timed out");
           _cleanupConnection();
@@ -187,7 +187,6 @@ class Worker {
   Future<void> _initializePort() async {
     if (!_isListening && deviceConnected) {
       try {
-        await Future.delayed(const Duration(milliseconds: 100));
         
         _serialPort?.config = _config;
         
