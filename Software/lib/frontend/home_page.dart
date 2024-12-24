@@ -27,6 +27,20 @@ class _HomePageState extends State<HomePage> {
   final Map<String, Uint8List?> _appIcons = {};
   final List<String> _sliderTags = ['unassigned', 'unassigned', 'unassigned', 'unassigned', 'unassigned'];
 
+
+  void _handleVolumeAdjustment(int sliderId, double value) {
+    if (_sliderTags[sliderId] == 'defaultDevice') {
+      _applicationManager.adjustDeviceVolume(value);
+    } else if (_sliderTags[sliderId] == 'app' && _assignedApps[sliderId] != null) {
+      final app = _assignedApps[sliderId];
+      if (app != null) {
+        _applicationManager.assignApplicationToSlider(sliderId, app);
+        _applicationManager.adjustVolume(sliderId, value);
+      }
+    }
+  }
+
+
   @override
   void initState() {
     super.initState();
@@ -67,12 +81,7 @@ class _HomePageState extends State<HomePage> {
         data.forEach((sliderId, sliderValue) {
           if (sliderId >= 0 && sliderId < _sliderValues.length) {
             _sliderValues[sliderId] = sliderValue.toDouble();
-            // Adjust volume based on whether it's a default device or app
-            if (_sliderTags[sliderId] == 'defaultDevice') {
-              _applicationManager.adjustDeviceVolume(sliderValue.toDouble());
-            } else if (_sliderTags[sliderId] == 'app') {
-              _applicationManager.adjustVolume(sliderId, sliderValue.toDouble());
-            }
+            _handleVolumeAdjustment(sliderId, sliderValue.toDouble());
           }
         });
       });
@@ -90,7 +99,6 @@ class _HomePageState extends State<HomePage> {
     final double screenWidth = MediaQuery.of(context).size.width;
     final double screenHeight = MediaQuery.of(context).size.height;
 
-    // Calculate container size based on screen dimensions
     final double containerWidth = screenWidth * 0.6;
     final double containerHeight = containerWidth * 0.6;
 
@@ -114,7 +122,7 @@ class _HomePageState extends State<HomePage> {
                   sliderValues: _sliderValues,
                   assignedApps: _assignedApps,
                   appIcons: _appIcons,
-                  sliderTags: _sliderTags,  // Pass sliderTags to SliderContainer
+                  sliderTags: _sliderTags,
                   onAssignApp: (sliderIndex) async {
                     _assignedApps = await assignApplication(
                       context,
@@ -123,23 +131,17 @@ class _HomePageState extends State<HomePage> {
                       _assignedApps,
                       _appIcons,
                       _sliderValues,
-                      _sliderTags, // Pass sliderTags
+                      _sliderTags,
                     );
+                    if (_assignedApps[sliderIndex] != null) {
+                      _sliderTags[sliderIndex] = 'app';
+                    }
                     setState(() {});
                   },
                   onSliderChange: (sliderIndex, value) {
                     setState(() {
                       _sliderValues[sliderIndex] = value;
-                  
-                      // Check if it's assigned to an app or the default device
-                      if (_sliderTags[sliderIndex] == 'defaultDevice') {
-                        _applicationManager.adjustDeviceVolume(value);
-                      } else if (_sliderTags[sliderIndex] == 'app' && _assignedApps[sliderIndex] != null) {
-                        // Ensure that an app is assigned to this slider before adjusting the volume
-                        _applicationManager.adjustVolume(sliderIndex, value);
-                      } else {
-                        print("No application assigned to this slider.");
-                      }
+                      _handleVolumeAdjustment(sliderIndex, value);
                     });
                   },
                   onSelectDefaultDevice: (sliderIndex, isDefault) {

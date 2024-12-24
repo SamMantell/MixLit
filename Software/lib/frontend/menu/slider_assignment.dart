@@ -11,14 +11,19 @@ Future<List<ProcessVolume?>> assignApplication(
   List<ProcessVolume?> assignedApps,
   Map<String, Uint8List?> appIcons,
   List<double> sliderValues,
-  List<String> sliderTags, // Pass sliderTags
+  List<String> sliderTags,
 ) async {
   List<ProcessVolume> runningApps = await applicationManager.getRunningApplicationsWithAudio();
   await fetchAllAppIcons(runningApps, appIcons);
 
+  // Store the previous state before showing dialog
+  final previousTag = sliderTags[sliderIndex];
+  final previousApp = assignedApps[sliderIndex];
+
   ProcessVolume? selectedApp = await showDialog<ProcessVolume>(
-  context: context,
-  builder: (BuildContext context) {
+    context: context,
+    barrierDismissible: true,
+    builder: (BuildContext context) {
     return BackdropFilter(
       filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
       child: DefaultTabController(
@@ -67,7 +72,11 @@ Future<List<ProcessVolume?>> assignApplication(
                             ),
                             onTap: () {
                               print("Selected app: ${app.processPath}");
-                              Navigator.pop(context, app); // Pass the app back to the caller
+                              sliderTags[sliderIndex] = 'app';
+                              assignedApps[sliderIndex] = app;
+                              applicationManager.assignApplicationToSlider(sliderIndex, app);
+                              applicationManager.adjustVolume(sliderIndex, sliderValues[sliderIndex]);
+                              Navigator.pop(context, app);
                             },
                           );
                         },
@@ -82,7 +91,6 @@ Future<List<ProcessVolume?>> assignApplication(
                               style: TextStyle(color: Colors.white),
                             ),
                             onTap: () {
-                              // Assign default device tag
                               sliderTags[sliderIndex] = 'defaultDevice'; // Tag this slider as the default device
                               Navigator.pop(context, null);
                             },
@@ -115,16 +123,15 @@ Future<List<ProcessVolume?>> assignApplication(
 
 
 
-  if (selectedApp == null) {
-    // Adjust the volume of the default device
-    double sliderValue = sliderValues[sliderIndex];
-    applicationManager.adjustDeviceVolume(sliderValue);
-    assignedApps[sliderIndex] = null;  // Mark it as unassigned to an app
-    sliderTags[sliderIndex] = 'defaultDevice'; // Tag this slider as the default device
-  } else {
-    // Assign the application to the slider
+  if (selectedApp != null) {
     assignedApps[sliderIndex] = selectedApp;
-    sliderTags[sliderIndex] = 'app'; // Tag this slider as an app
+    sliderTags[sliderIndex] = 'app';
+    applicationManager.assignApplicationToSlider(sliderIndex, selectedApp);
+  } else if (sliderTags[sliderIndex] == 'defaultDevice') {
+    assignedApps[sliderIndex] = null;
+  } else {
+    sliderTags[sliderIndex] = previousTag;
+    assignedApps[sliderIndex] = previousApp;
   }
 
   return assignedApps;

@@ -14,27 +14,25 @@ class ApplicationManager {
   void adjustVolume(int sliderIndex, double sliderValue) {
     ProcessVolume? appProcess = assignedApplications[sliderIndex];
     if (appProcess != null) {
-      int volumeLevel = ((sliderValue / 1024) * 100).round();
-      double floatVolumeLevel = volumeLevel / 100;
-
-      // Apply the volume adjustment
-      Audio.setAudioMixerVolume(appProcess.processId, floatVolumeLevel);
-
-      // Mute by setting to a very low level
+      // More precise volume calculation
+      double volumeLevel = sliderValue / 1024;
+      Audio.setAudioMixerVolume(appProcess.processId, volumeLevel);
+      if (volumeLevel <= 0.001) {
+        Audio.setAudioMixerVolume(appProcess.processId, 0);
+      }
+      
+      //muting
       if (volumeLevel == 0) {
         Audio.setAudioMixerVolume(appProcess.processId, 0.0001);
       }
 
-      print(
-          "Set volume of ${appProcess.processPath} to $volumeLevel%\nsliderValue: $sliderValue\nvolumeLevel: $floatVolumeLevel");
-    } else {
-    print("No application assigned to this slider.");
-  }
-  }
+      print("Set volume of ${appProcess.processPath} to ${(volumeLevel * 100).round()}%");
+    }
+    }
 
-  void adjustDeviceVolume(double sliderValue) {
-  int volumeLevel = ((sliderValue / 1024) * 100).round();
-  Audio.setVolume(volumeLevel / 100, AudioDeviceType.output);
-  print("Set device volume to $volumeLevel%");
-}
+    void adjustDeviceVolume(double sliderValue) {
+    int volumeLevel = ((sliderValue / 1024) * 100).round();
+    Audio.setVolume(volumeLevel / 100, AudioDeviceType.output);
+    print("Set device volume to $volumeLevel%");
+  }
 }
