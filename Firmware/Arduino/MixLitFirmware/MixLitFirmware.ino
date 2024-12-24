@@ -221,12 +221,6 @@ void loop()
   {
     if ((abs(currentSliderState[i] - previousSliderState[i]) > 3) || isAnimated || needsUpdate)
     {
-      setLEDs(currentSliderState[i], i);
-      FastLED.show();
-    }
-
-    if ((abs(currentSliderState[i] - previousSliderState[i]) > 3))
-    {
       if (currentSliderState[i] > 1020)
       {
         currentSliderState[i] = 1023;
@@ -236,6 +230,12 @@ void loop()
         currentSliderState[i] = 0;
       }
 
+      setLEDs(currentSliderState[i], i);
+      FastLED.show();
+    }
+
+    if ((abs(currentSliderState[i] - previousSliderState[i]) > 3))
+    {
       previousSliderState[i] = currentSliderState[i];
       stringToSendToSoftware += i;
       stringToSendToSoftware += "|";
