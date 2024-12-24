@@ -9,12 +9,12 @@ class Toast extends StatefulWidget {
   final Duration duration;
 
   const Toast({
-    Key? key,
+    super.key,
     required this.icon,
     required this.message,
     required this.color,
     required this.duration,
-  }) : super(key: key);
+  });
 
   @override
   State<Toast> createState() => _ToastState();
