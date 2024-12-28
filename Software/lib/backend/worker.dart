@@ -3,11 +3,33 @@ import 'dart:typed_data';
 import 'dart:isolate';
 import 'package:flutter_libserialport/flutter_libserialport.dart';
 
-class Worker {
-  SerialPort? _serialPort;
-  Timer? _readTimer;
-  final _config = SerialPortConfig()
-    ..baudRate = 115200
+class SerialWorker {
+  static const int BAUD_RATE = 115200;
+  static const int SCAN_TIMEOUT_MS = 6000;
+  static const String DEVICE_IDENTIFIER = "mixlit";
+  static const String DEBUG_PORT = "COM20";
+  
+  SerialPort? _port;
+  SerialPortReader? _reader;
+  bool _isConnected = false;
+  bool _isListening = false;
+  Timer? _reconnectTimer;
+  Isolate? _dataProcessingIsolate;
+  ReceivePort? _receivePort;
+  SendPort? _isolateSendPort;
+  String? _lastKnownPort;
+  
+  final _sliderDataController = StreamController<Map<int, int>>.broadcast();
+  final _rawDataController = StreamController<String>.broadcast();
+  final _connectionStateController = StreamController<bool>.broadcast();
+  
+  Stream<Map<int, int>> get sliderData => _sliderDataController.stream;
+  Stream<String> get rawData => _rawDataController.stream;
+  Stream<bool> get connectionState => _connectionStateController.stream;
+  
+  // Port configuration
+  final _portConfig = SerialPortConfig()
+    ..baudRate = BAUD_RATE
     ..bits = 8
     ..parity = SerialPortParity.none
     ..stopBits = 1
@@ -17,389 +39,537 @@ class Worker {
     ..dsr = 0
     ..dtr = 1;
 
-  final StreamController<Map<int, int>> _sliderStreamController = StreamController.broadcast();
-  final StreamController<String> _rawDataStreamController = StreamController.broadcast();
-  final StreamController<bool> _connectionStreamController = StreamController.broadcast();
-  Timer? _connectionCheckTimer;
-  SendPort? _isolateSendPort;
-  ReceivePort? _receivePort;
-  Isolate? _isolate;
-  bool deviceConnected = false;
-  bool _isListening = false;
-  
-  Stream<Map<int, int>> get sliderStream => _sliderStreamController.stream;
-  Stream<String> get rawDataStream => _rawDataStreamController.stream;
-  Stream<bool> get connectionStream => _connectionStreamController.stream;
-
-  Worker() {
-    _startConnectionCheck();
+  SerialWorker() {
+    _initializeConnection();
   }
 
-  Future<(String, SerialPort)?> _findDevicePort() async {
-    final availablePorts = SerialPort.availablePorts;
-    final completer = Completer<(String, SerialPort)?>();
-    int checkedPorts = 0;
+  Future<void> _initializeConnection() async {
+    if (_lastKnownPort != null) {
+      try {
+        final port = SerialPort(_lastKnownPort!);
+        if (await _verifyDevice(port)) {
+          await _establishConnection(port);
+          return;
+        }
+      } catch (e) {
+        print('Failed to reconnect to last known port: $e');
+        _lastKnownPort = null;
+      }
+    }
+
+    // if last known port failed, scan all available ports
+    await _scanAndConnect();
+  }
+
+  Future<void> _scanAndConnect() async {
+    print('Starting device scan...');
     
-    if (availablePorts.isEmpty) {
+    // arduino moment pt2
+    await Future.delayed(Duration(milliseconds: 500));
+    
+    if (!SerialPort.availablePorts.contains(DEBUG_PORT)) {
+      print('DEBUG: COM20 is not available!');
+      print('Available ports: ${SerialPort.availablePorts}');
+      return;
+    }
+
+    try {
+      // yeet any existing connections
+      await _cleanupExistingConnection();
+      
+      print('Attempting to connect to $DEBUG_PORT...');
+      final result = await _attemptConnection(DEBUG_PORT);
+      
+      if (result != null) {
+        final port = result;
+        _lastKnownPort = DEBUG_PORT;
+        await _establishConnection(port);
+      } else {
+        print('No MixLit device found on $DEBUG_PORT');
+        _startReconnectionTimer();
+      }
+    } catch (e) {
+      print('Error during port scanning: $e');
+      _startReconnectionTimer();
+    }
+  }
+
+  Future<void> _cleanupExistingConnection() async {
+    if (_port != null) {
+      try {
+        if (_port!.isOpen) {
+          _port!.flush();
+          _port!.close();
+        }
+        _port = null;
+      } catch (e) {
+        print('Error cleaning up existing port: $e');
+      }
+    }
+    
+    // the fuck is wrong with arduino and why does this fix my nightmares
+    await Future.delayed(Duration(milliseconds: 100));
+  }
+
+  Future<SerialPort?> _attemptConnection(String portName) async {
+  print('Attempting connection on port: $portName');
+  SerialPort? port;
+  bool verificationSuccess = false;
+  
+  try {
+    // Create port instance
+    port = SerialPort(portName);
+    print('Created SerialPort instance for $portName');
+    
+    // Ensure port is closed before we start
+    if (port.isOpen) {
+      print('Port was already open, closing first');
+      port.close();
+      await Future.delayed(Duration(milliseconds: 100));
+    }
+
+    // Open port
+    if (!port.openReadWrite()) {
+      print('Failed to open $portName for read/write');
+      return null;
+    }
+    
+    print('Successfully opened $portName for read/write');
+    
+    // Configure port
+    try {
+      port.config = _portConfig;
+      await Future.delayed(Duration(milliseconds: 100));
+      port.flush();
+      print('Port configured successfully');
+    } catch (e) {
+      print('Error configuring port: $e');
       return null;
     }
 
-    for (final portName in availablePorts) {
+    // Verify device
+    verificationSuccess = await _verifyDevice(port);
+    if (verificationSuccess) {
+      print('Device verified successfully on $portName');
+      return port;
+    } else {
+      print('Device verification failed on $portName');
+      return null;
+    }
+  } catch (e) {
+    print('Error during connection attempt: $e');
+    return null;
+  } finally {
+    // close port if verification failed
+    if (port != null && port.isOpen && !verificationSuccess) {
       try {
-        final port = SerialPort(portName);
-        if (port.openReadWrite()) {
-          port.config = _config;
-          port.flush();
-          
-          await Future.delayed(const Duration(milliseconds: 100));
-          
-          bool deviceFound = false;
-          final buffer = List<int>.empty(growable: true);
-          
-          // Set up manual reading for device detection
-          Timer.periodic(Duration(milliseconds: 1), (timer) async {
-            if (deviceFound || !port.isOpen) {
-              timer.cancel();
-              return;
-            }
+        port.close();
+        print('Closed port $portName after failed verification');
+      } catch (e) {
+        print('Error closing port: $e');
+      }
+    }
+  }
+}
+
+  Future<(String, SerialPort)?> _scanPort(String portName) async {
+    print('Scanning port: $portName');
+    SerialPort? port;
+    
+    try {
+      port = SerialPort(portName);
+      print('Created SerialPort instance for $portName');
+      
+      if (!port.openReadWrite()) {
+        print('Failed to open $portName for read/write');
+        return null;
+      }
+      
+      print('Successfully opened $portName for read/write');
+      
+      if (await _verifyDevice(port)) {
+        print('Device verified on $portName');
+        return (portName, port);
+      } else {
+        print('Device verification failed on $portName');
+      }
+    } catch (e) {
+      print('Error scanning port $portName: $e');
+    } finally {
+      if (port != null && port.isOpen) {
+        try {
+          port.close();
+          print('Closed port $portName after scanning');
+        } catch (e) {
+          print('Error closing port during scan: $e');
+        }
+      }
+    }
+    return null;
+  }
+
+
+  Future<bool> _verifyDevice(SerialPort port) async {
+    print('Starting device verification for Arduino...');
+    
+    if (!port.isOpen) {
+      print('Port is not open for verification');
+      return false;
+    }
+    
+    try {
+      final completer = Completer<bool>();
+      Timer? timeoutTimer;
+      SerialPortReader? verificationReader;
+      StreamSubscription? subscription;
+      
+      // clear existing buffer data
+      port.flush();
+      await Future.delayed(Duration(milliseconds: 50));
+      
+      print('Setting up verification reader...');
+      verificationReader = SerialPortReader(port, timeout: 50);
+      
+      print('Setting up verification subscription...');
+      subscription = verificationReader.stream.listen(
+        (data) {
+          try {
+            final response = String.fromCharCodes(data).trim();
+            print('Raw data received: ${data.length} bytes');
+            print('Decoded response: "$response"');
             
+            if (response.contains("mixlit") && !completer.isCompleted) {
+              print('Found MixLit device');
+              completer.complete(true);
+            }
+          } catch (e) {
+            print('Error processing response data: $e');
+          }
+        },
+        onError: (error) {
+          print('Stream error during verification: $error');
+          if (!completer.isCompleted) {
+            completer.complete(false);
+          }
+        },
+        cancelOnError: false,
+      );
+
+      // query with increased delays between attempts
+      for (var i = 0; i < 3; i++) {
+        if (completer.isCompleted) break;
+        print('Sending query attempt ${i + 1}...');
+        port.write(Uint8List.fromList('?\n'.codeUnits));
+        port.flush();
+        await Future.delayed(Duration(milliseconds: 200));
+      }
+
+      // timeout timer with longer duration
+      timeoutTimer = Timer(Duration(milliseconds: 2000), () {
+        if (!completer.isCompleted) {
+          print('Verification timed out.');
+          completer.complete(false);
+        }
+      });
+
+      try {
+        final result = await completer.future;
+        print('Verification completed with result: $result');
+        return result;
+      } finally {
+        timeoutTimer.cancel();
+        await subscription.cancel();
+         verificationReader.close();
+      }
+    } catch (e) {
+      print('Exception during verification: $e');
+      return false;
+    }
+  }
+
+  void _startReconnectionTimer() {
+    _reconnectTimer?.cancel();
+    _reconnectTimer = Timer.periodic(
+      const Duration(seconds: 5),
+      (_) {
+        if (!_isConnected) _initializeConnection();
+      },
+    );
+  }
+
+  Future<void> _establishConnection(SerialPort port) async {
+    if (_isConnected) return;
+    
+    try {
+      _port = port;
+      _port!.config = _portConfig;
+      
+      await _initializeDataProcessing();
+      await _setupPortReader();
+      
+      _isConnected = true;
+      _connectionStateController.add(true);
+      _reconnectTimer?.cancel();
+      
+      print('Connection established successfully');
+    } catch (e) {
+      print('Error establishing connection: $e');
+      await _handleDisconnection();
+    }
+  }
+
+  Future<void> _initializeDataProcessing() async {
+  print('Starting data processing initialization');
+  _receivePort?.close();
+  _receivePort = ReceivePort();
+  
+  final errorPort = ReceivePort();
+  final completer = Completer<void>();
+  
+  void handleError(error) {
+    print('Isolate error: $error');
+    _handleDisconnection();
+  }
+  
+  errorPort.listen(handleError);
+  
+  _receivePort!.listen((message) {
+    print('Received message in main isolate: $message');
+    if (message is SendPort) {
+      print('Received SendPort from isolate');
+      _isolateSendPort = message;
+      if (!completer.isCompleted) completer.complete();
+    } else if (message is Map<int, int>) {
+      print('Received slider data: $message');
+      _sliderDataController.add(message);
+    } else if (message is String) {
+      print('Received raw data: $message');
+      _rawDataController.add(message);
+    } else {
+      print('Received unknown message type: ${message.runtimeType}');
+    }
+  });
+  
+  try {
+    print('Spawning isolate...');
+    _dataProcessingIsolate = await Isolate.spawn(
+      _processDataIsolate,
+      _receivePort!.sendPort,
+      onError: errorPort.sendPort,
+      errorsAreFatal: true,
+    );
+    
+    print('Waiting for isolate initialization...');
+    await completer.future.timeout(
+      const Duration(seconds: 1),
+      onTimeout: () => throw TimeoutException('Isolate initialization timeout'),
+    );
+    print('Data processing initialization complete');
+  } catch (e) {
+    print('Error initializing data processing: $e');
+    rethrow;
+  }
+}
+
+  Future<void> _setupPortReader() async {
+    if (_port == null || !_port!.isOpen) return;
+    
+    try {
+      _reader?.close();
+      await Future.delayed(Duration(milliseconds: 50));
+      
+      _reader = SerialPortReader(_port!, timeout: 100);
+      _isListening = true;
+      
+      print('Setting up data processing subscription...');
+      _reader!.stream.listen(
+        (data) {
+          if (data.isNotEmpty) {
             try {
-              if (port.bytesAvailable > 0) {
-                final bytes = port.read(port.bytesAvailable);
-                if (bytes != null && bytes.isNotEmpty) {
-                  buffer.addAll(bytes);
-                  final responseStr = String.fromCharCodes(buffer).trim().toLowerCase();
-                  
-                  if (responseStr.contains("mixlit")) {
-                    deviceFound = true;
-                    timer.cancel();
-                    
-                    if (!completer.isCompleted) {
-                      print("Found MixLit device on port: $portName");
-                      completer.complete((portName, port));
-                    }
-                    return;
-                  }
-                }
+              final response = String.fromCharCodes(data);
+              print('Received data: "$response"');
+              print('Forwarding to isolate for processing: ${data.length} bytes');
+              
+              if (_isolateSendPort != null) {
+                _isolateSendPort!.send(data);
+                
+                // keep port alive by flushing
+                _port?.flush();
+              } else {
+                print('Warning: isolateSendPort is null, data not forwarded');
               }
             } catch (e) {
-              timer.cancel();
-              port.close();
-              if (!completer.isCompleted) {
-                checkedPorts++;
-                if (checkedPorts == availablePorts.length) {
-                  completer.complete(null);
-                }
-              }
-            }
-          });
-
-          // Send query command
-          String str2 = '?';
-          Uint8List uint8list2 = Uint8List.fromList(str2.codeUnits);
-          port.write(uint8list2);
-          port.flush();
-
-          // Wait for response or timeout
-          await Future.delayed(const Duration(milliseconds: 600));
-          
-          if (!completer.isCompleted && !deviceFound) {
-            port.close();
-            checkedPorts++;
-            if (checkedPorts == availablePorts.length) {
-              completer.complete(null);
+              print('Error processing received data: $e');
             }
           }
-        }
-      } catch (e) {
-        print("Error with port $portName: $e");
-        checkedPorts++;
-        if (checkedPorts == availablePorts.length && !completer.isCompleted) {
-          completer.complete(null);
-        }
-      }
-    }
-
-    return completer.future;
-  }
-
-  void _startConnectionCheck() {
-    _checkConnection();
-    _connectionCheckTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      _checkConnection();
-    });
-  }
-
-  Future<void> _setupIsolate() async {
-    if (_isolate != null) {
-      _isolateSendPort = null;
-      _receivePort?.close();
-      _receivePort = null;
-      _isolate?.kill();
-      _isolate = null;
-    }
-    
-    _receivePort = ReceivePort();
-    final errorPort = ReceivePort();
-    
-    final completer = Completer<void>();
-    
-    _receivePort!.listen((message) {
-      if (message is SendPort) {
-        _isolateSendPort = message;
-        if (!completer.isCompleted) completer.complete();
-      } else if (message is Map<int, int>) {
-        _sliderStreamController.add(message);
-      } else if (message is String) {
-        _rawDataStreamController.add(message);
-      }
-    });
-
-    errorPort.listen((error) {
-      print("Isolate error: $error");
-      _cleanupConnection();
-    });
-
-    try {
-      _isolate = await Isolate.spawn(
-        _isolateEntry,
-        _receivePort!.sendPort,
-        debugName: 'SerialWorkerIsolate',
-        errorsAreFatal: true,
-        onError: errorPort.sendPort,
+        },
+        onError: (error) {
+          print('Serial port read error: $error');
+          _handleDisconnection();
+        },
+        onDone: () {
+          print('Serial port read stream closed');
+          if (_port?.isOpen ?? false) {
+            _handleDisconnection();
+          }
+        },
+        cancelOnError: false,  // prevent premature cancellation
       );
       
-      await completer.future.timeout(
-        const Duration(seconds: 1),
-        onTimeout: () {
-          print("Isolate setup timed out");
-          _cleanupConnection();
-          throw TimeoutException("Isolate setup timed out");
-        },
-      );
+      // keepalive timer
+      Timer.periodic(Duration(milliseconds: 500), (timer) {
+        if (!(_port?.isOpen ?? false)) {
+          timer.cancel();
+          return;
+        }
+        try {
+          _port?.flush();
+        } catch (e) {
+          print('Error in keepalive flush: $e');
+          timer.cancel();
+          _handleDisconnection();
+        }
+      });
+      
+      print('Port reader setup complete');
     } catch (e) {
-      print("Error setting up isolate: $e");
-      _cleanupConnection();
+      print('Error setting up port reader: $e');
       rethrow;
     }
   }
 
-  Future<void> _initializePort() async {
-    if (!_isListening && deviceConnected) {
-      try {
-        
-        _serialPort?.config = _config;
-        
-        if (!(_serialPort?.isOpen ?? false)) {
-          _serialPort?.openReadWrite();
-        }
-        
-        String str2 = '?';
-        Uint8List uint8list2 = Uint8List.fromList(str2.codeUnits);
-        _serialPort?.write(uint8list2);
-        _serialPort?.flush();
-
-        await _setupIsolate();
-
-        if (!_isListening) {
-          // set up stream listening
-          final reader = SerialPortReader(_serialPort!, timeout: 0);
-          
-          reader.stream.listen(
-            (data) {
-              if (data.isNotEmpty) {
-                _isolateSendPort?.send(data);
-              }
-            },
-            onError: (error) {
-              print("Serial port error: $error");
-              _cleanupConnection();
-            },
-            onDone: () {
-              print("Serial port stream closed");
-              _cleanupConnection();
-            },
-            cancelOnError: true,
-          );
-          
-          _isListening = true;
-        }
-      } catch (e, stack) {
-        print("Error in _initializePort: $e");
-        print("Stack trace: $stack");
-        _cleanupConnection();
-      }
-    }
-  }
-
-  void _startReading() {
-    _readTimer?.cancel();
-    _readTimer = Timer.periodic(const Duration(milliseconds: 1), (timer) {
-      if (!_isListening || _serialPort == null || !(_serialPort?.isOpen ?? false)) {
-        timer.cancel();
-        _cleanupConnection();
-        return;
-      }
-
-      try {
-        final available = _serialPort!.bytesAvailable;
-        if (available > 0) {
-          final chunkSize = available > 1024 ? 1024 : available;
-          final bytes = _serialPort!.read(chunkSize);
-          if (bytes != null && bytes.isNotEmpty) {
-            _isolateSendPort?.send(bytes);
-          }
-        }
-      } catch (e) {
-        print("Error reading from port: $e");
-        timer.cancel();
-        _cleanupConnection();
-      }
-    });
-  }
-
-  void _cleanupConnection() {
+  Future<void> _handleDisconnection() async {
+    if (!_isConnected) return;
+    
+    _isConnected = false;
     _isListening = false;
-    deviceConnected = false;
     
-    _readTimer?.cancel();
-    _readTimer = null;
+    // close reader first
+    try {
+      _reader?.close();
+    } catch (e) {
+      print('Error closing reader: $e');
+    }
+    _reader = null;
     
-    if (_serialPort?.isOpen ?? false) {
+    // then close port
+    if (_port?.isOpen ?? false) {
       try {
-        _serialPort!.flush();
-        _serialPort!.close();
+        _port!.flush();
+        _port!.close();
       } catch (e) {
-        print("Error closing serial port: $e");
+        print('Error closing port: $e');
       }
     }
-    _serialPort = null;
+    _port = null;
     
-    _isolateSendPort = null;
+    _dataProcessingIsolate?.kill();
+    _dataProcessingIsolate = null;
     _receivePort?.close();
     _receivePort = null;
-    _isolate?.kill();
-    _isolate = null;
+    _isolateSendPort = null;
     
-    _connectionStreamController.add(false);
+    _connectionStateController.add(false);
+    
+    // delay before starting the reconnection timer
+    await Future.delayed(Duration(seconds: 2));
+    _startReconnectionTimer();
   }
 
-  Future<void> _checkConnection() async {
-    if (deviceConnected && _isListening) return;
+  static void _processDataIsolate(SendPort mainSendPort) {
+  final receivePort = ReceivePort();
+  final buffer = StringBuffer();
+  String? remainingData;
+  
+  print('Isolate: Starting data processing isolate');
+  mainSendPort.send(receivePort.sendPort);
+  
+  receivePort.listen((data) {
+    print('Isolate: Received data in isolate');
+    if (data is! Uint8List) {
+      print('Isolate: Received non-Uint8List data: ${data.runtimeType}');
+      return;
+    }
     
-    bool wasConnected = deviceConnected;
     try {
-      print("Scanning for MixLit device...");
-      final deviceInfo = await _findDevicePort();
+      print('Isolate: Processing ${data.length} bytes');
       
-      if (deviceInfo != null) {
-        final (portName, port) = deviceInfo;
-        _serialPort = port;
-        deviceConnected = true;
-        if (!wasConnected) {
-          print("Successfully connected to device on port $portName");
-          _connectionStreamController.add(true);
-          await _initializePort();
+      if (remainingData != null) {
+        print('Isolate: Adding remaining data: $remainingData');
+        buffer.write(remainingData);
+        remainingData = null;
+      }
+
+      final newData = String.fromCharCodes(data);
+      print('Isolate: Decoded data: "$newData"');
+      buffer.write(newData);
+      final bufferedData = buffer.toString();
+      print('Isolate: Buffer contents: "$bufferedData"');
+      
+      if (bufferedData.contains('\n')) {
+        final lines = bufferedData.split('\n');
+        print('Isolate: Processing ${lines.length} lines');
+        
+        for (var i = 0; i < lines.length - 1; i++) {
+          final line = lines[i].trim();
+          if (line.isNotEmpty) {
+            print('Isolate: Processing line: "$line"');
+            _parseAndSendData(line, mainSendPort);
+          }
+        }
+        
+        buffer.clear();
+        if (!bufferedData.endsWith('\n')) {
+          remainingData = lines.last;
+          print('Isolate: Storing remaining data: "$remainingData"');
         }
       } else {
-        print("No MixLit device found");
-        _cleanupConnection();
-      }
-    } catch (e, stackTrace) {
-      print("Error connecting to device: $e");
-      print("Stack trace: $stackTrace");
-      _cleanupConnection();
-    }
-  }
-
-  static void _isolateEntry(SendPort mainSendPort) {
-    print("Isolate starting...");
-    final buffer = StringBuffer();
-    final receivePort = ReceivePort();
-    String? remainingData;
-
-    // Send port immediately to prevent timeout
-    mainSendPort.send(receivePort.sendPort);
-    print("Isolate sent SendPort");
-
-    receivePort.listen((data) {
-      if (data is Uint8List) {
-        try {
-          // Append any remaining data from previous processing
-          if (remainingData != null) {
-            buffer.write(remainingData);
-            remainingData = null;
-          }
-
-          String dataString = String.fromCharCodes(data);
-          buffer.write(dataString);
-
-          String bufferedData = buffer.toString();
-          
-          // Only process if we have a complete line
-          if (bufferedData.contains('\n')) {
-            List<String> lines = bufferedData.split('\n');
-            
-            // Process complete lines
-            for (int i = 0; i < lines.length - 1; i++) {
-              String line = lines[i].trim();
-              if (line.isNotEmpty) {
-                _processData(line, mainSendPort);
-              }
-            }
-
-            // Store any incomplete data
-            buffer.clear();
-            if (!bufferedData.endsWith('\n')) {
-              remainingData = lines.last;
-            }
-          }
-        } catch (e) {
-          print("Error processing data in isolate: $e");
-          buffer.clear();
-          remainingData = null;
-        }
-      }
-    });
-  }
-
-  static void _processData(String line, SendPort mainSendPort) {
-    try {
-      Map<int, int> sliderData = {};
-      List<String> parts = line.split('|');
-
-      for (int i = 0; i < parts.length - 1; i += 2) {
-        try {
-          int sliderId = int.parse(parts[i].trim());
-          int sliderValue = int.parse(parts[i + 1].trim());
-          sliderData[sliderId] = sliderValue;
-        } catch (e) {
-          print("Error parsing slider data: $e");
-          continue;
-        }
-      }
-
-      if (sliderData.isNotEmpty) {
-        mainSendPort.send(sliderData);
+        print('Isolate: No newline found, waiting for more data');
       }
     } catch (e) {
-      print("Error in _processData: $e");
+      print('Isolate: Error processing data: $e');
+      buffer.clear();
+      remainingData = null;
     }
-  }
+  });
+}
 
-  void dispose() {
-    _connectionCheckTimer?.cancel();
-    _readTimer?.cancel();
-    if (_serialPort?.isOpen ?? false) {
+  static void _parseAndSendData(String line, SendPort mainSendPort) {
+  print('Isolate: Parsing line: "$line"');
+  try {
+    final sliderData = <int, int>{};
+    final parts = line.split('|');
+    print('Isolate: Split into ${parts.length} parts');
+    
+    for (var i = 0; i < parts.length - 1; i += 2) {
       try {
-        _serialPort?.close();
+        final sliderId = int.parse(parts[i].trim());
+        final sliderValue = int.parse(parts[i + 1].trim());
+        print('Isolate: Parsed slider $sliderId = $sliderValue');
+        sliderData[sliderId] = sliderValue;
       } catch (e) {
-        print("Error closing port during dispose: $e");
+        print('Isolate: Error parsing slider data part: $e');
+        continue;
       }
     }
-    _cleanupConnection();
-    _sliderStreamController.close();
-    _rawDataStreamController.close();
-    _connectionStreamController.close();
+    
+    if (sliderData.isNotEmpty) {
+      print('Isolate: Sending slider data: $sliderData');
+      mainSendPort.send(sliderData);
+    } else {
+      print('Isolate: No valid slider data found');
+    }
+  } catch (e) {
+    print('Isolate: Error in data parsing: $e');
+  }
+}
+
+  Future<void> dispose() async {
+    _reconnectTimer?.cancel();
+    await _handleDisconnection();
+    
+    await _sliderDataController.close();
+    await _rawDataController.close();
+    await _connectionStateController.close();
   }
 }

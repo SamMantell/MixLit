@@ -194,7 +194,7 @@ void setup()
         {
             Serial.println("mixlit");
             FastLED.setBrightness(10);
-            delay(20);
+            delay(100);
             return;
         }
     }
@@ -204,6 +204,14 @@ void setup()
 
 void loop()
 {
+
+  char c = Serial.read();
+  if (c == 63)
+  {
+      Serial.println("mixlit");
+      delay(100);
+  }
+
   stringToSendToSoftware = "";
 
   for (int i = 0; i < NUM_OF_SLIDERS; i++)

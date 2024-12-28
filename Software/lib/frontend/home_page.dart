@@ -1,5 +1,4 @@
 import 'dart:typed_data';
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:mixlit/frontend/menu/slider_assignment.dart';
@@ -8,7 +7,6 @@ import 'package:mixlit/frontend/menu/dialog/warning.dart';
 import 'package:mixlit/frontend/menu/notification/toast.dart';
 import 'package:mixlit/backend/worker.dart';
 import 'package:mixlit/backend/application/get_application.dart';
-
 import 'package:win32audio/win32audio.dart';
 
 class HomePage extends StatefulWidget {
@@ -19,14 +17,17 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  final Worker _worker = Worker();
+  final SerialWorker _worker = SerialWorker();  // Updated to use SerialWorker
   final ApplicationManager _applicationManager = ApplicationManager();
 
   final List<double> _sliderValues = [0, 0, 0, 0, 0];
   List<ProcessVolume?> _assignedApps = [null, null, null, null, null];
   final Map<String, Uint8List?> _appIcons = {};
   final List<String> _sliderTags = ['unassigned', 'unassigned', 'unassigned', 'unassigned', 'unassigned'];
-
+  
+  bool _hasShownInitialDialog = false;
+  bool _isCurrentlyConnected = false;
+  bool _isNotificationInProgress = false;
 
   void _handleVolumeAdjustment(int sliderId, double value) {
     if (_sliderTags[sliderId] == 'defaultDevice') {
@@ -40,52 +41,91 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  void _showConnectionNotification(bool connected) {
+    // Prevent notification spam
+    if (_isNotificationInProgress) return;
+    if (connected == _isCurrentlyConnected) return;
+    
+    _isNotificationInProgress = true;
+    _isCurrentlyConnected = connected;
+
+    // Show the notification
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(
+              connected ? Icons.usb_rounded : Icons.usb_off_rounded,
+              color: Colors.white,
+            ),
+            const SizedBox(width: 8),
+            Text(connected ? "MixLit device connected" : "MixLit device disconnected"),
+          ],
+        ),
+        backgroundColor: connected ? Colors.green : Colors.red,
+        duration: const Duration(seconds: 3),
+      ),
+    );
+
+    // Reset notification flag after delay
+    Future.delayed(const Duration(milliseconds: 500), () {
+      _isNotificationInProgress = false;
+    });
+  }
+
+  void _initializeDeviceConnection() {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      // Check initial connection state
+      final isConnected = await _worker.connectionState.first;
+      if (!isConnected && !_hasShownInitialDialog) {
+        _hasShownInitialDialog = true;
+        if (mounted) {
+          FailedToConnectToDeviceDialog.show(
+            context,
+            "Couldn't detect your MixLit, app will maintain basic functionality."
+          );
+        }
+      }
+    });
+  }
+
+  void _setupConnectionListener() {
+    _worker.connectionState.listen(
+      (connected) {
+        if (mounted) {
+          _showConnectionNotification(connected);
+        }
+      },
+      onError: (error) {
+        print('Connection stream error: $error');
+      },
+    );
+  }
+
+  void _setupSliderListener() {
+    _worker.sliderData.listen(
+      (data) {
+          setState(() {
+            data.forEach((sliderId, sliderValue) {
+              if (sliderId >= 0 && sliderId < _sliderValues.length) {
+                _sliderValues[sliderId] = sliderValue.toDouble();
+                _handleVolumeAdjustment(sliderId, sliderValue.toDouble());
+              }
+            });
+          });
+      },
+      onError: (error) {
+        print('Slider stream error: $error');
+      },
+    );
+  }
 
   @override
   void initState() {
     super.initState();
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_worker.deviceConnected) {
-        FailedToConnectToDeviceDialog.show(
-          context, 
-          "Couldn't detect your MixLit, app will maintain basic functionality."
-        );
-      }
-    });
-
-    // Listen for connection status changes
-    _worker.connectionStream.listen((connected) {
-      if (connected) {
-        Toast.show(
-          context: context,
-          icon: Icons.usb_rounded,
-          message: "MixLit device connected",
-          color: Colors.green,
-          duration: const Duration(seconds: 3),
-        );
-      } else {
-        Toast.show(
-          context: context,
-          icon: Icons.usb_off_rounded,
-          message: "MixLit device disconnected",
-          color: Colors.red,
-          duration: const Duration(seconds: 3),
-        );
-      }
-    });
-
-    // Listen to the slider stream from Worker to update slider values
-    _worker.sliderStream.listen((data) {
-      setState(() {
-        data.forEach((sliderId, sliderValue) {
-          if (sliderId >= 0 && sliderId < _sliderValues.length) {
-            _sliderValues[sliderId] = sliderValue.toDouble();
-            _handleVolumeAdjustment(sliderId, sliderValue.toDouble());
-          }
-        });
-      });
-    });
+    _initializeDeviceConnection();
+    _setupConnectionListener();
+    _setupSliderListener();
   }
 
   @override
@@ -97,8 +137,6 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     final double screenWidth = MediaQuery.of(context).size.width;
-    final double screenHeight = MediaQuery.of(context).size.height;
-
     final double containerWidth = screenWidth * 0.6;
     final double containerHeight = containerWidth * 0.6;
 
@@ -139,15 +177,15 @@ class _HomePageState extends State<HomePage> {
                     setState(() {});
                   },
                   onSliderChange: (sliderIndex, value) {
-                    setState(() {
-                      _sliderValues[sliderIndex] = value;
-                      _handleVolumeAdjustment(sliderIndex, value);
-                    });
+                      setState(() {
+                        _sliderValues[sliderIndex] = value;
+                        _handleVolumeAdjustment(sliderIndex, value);
+                      });
                   },
                   onSelectDefaultDevice: (sliderIndex, isDefault) {
-                    setState(() {
-                      _sliderTags[sliderIndex] = isDefault ? 'defaultDevice' : 'unassigned';
-                    });
+                      setState(() {
+                        _sliderTags[sliderIndex] = isDefault ? 'defaultDevice' : 'unassigned';
+                      });
                   },
                 ),
                 Positioned(
