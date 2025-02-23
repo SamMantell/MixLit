@@ -4,9 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:mixlit/frontend/menu/slider_assignment.dart';
 import 'package:mixlit/frontend/components/slider_container.dart';
 import 'package:mixlit/frontend/menu/dialog/warning.dart';
-import 'package:mixlit/frontend/menu/notification/toast.dart';
-import 'package:mixlit/backend/worker.dart';
-import 'package:mixlit/backend/application/get_application.dart';
+import 'package:mixlit/backend/serial/SerialWorker.dart';
+import 'package:mixlit/backend/application/ApplicationManager.dart';
 import 'package:win32audio/win32audio.dart';
 
 class HomePage extends StatefulWidget {
@@ -17,14 +16,20 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  final SerialWorker _worker = SerialWorker();  // Updated to use SerialWorker
+  final SerialWorker _worker = SerialWorker(); // Updated to use SerialWorker
   final ApplicationManager _applicationManager = ApplicationManager();
 
   final List<double> _sliderValues = [0, 0, 0, 0, 0];
   List<ProcessVolume?> _assignedApps = [null, null, null, null, null];
   final Map<String, Uint8List?> _appIcons = {};
-  final List<String> _sliderTags = ['unassigned', 'unassigned', 'unassigned', 'unassigned', 'unassigned'];
-  
+  final List<String> _sliderTags = [
+    'unassigned',
+    'unassigned',
+    'unassigned',
+    'unassigned',
+    'unassigned'
+  ];
+
   bool _hasShownInitialDialog = false;
   bool _isCurrentlyConnected = false;
   bool _isNotificationInProgress = false;
@@ -32,7 +37,8 @@ class _HomePageState extends State<HomePage> {
   void _handleVolumeAdjustment(int sliderId, double value) {
     if (_sliderTags[sliderId] == 'defaultDevice') {
       _applicationManager.adjustDeviceVolume(value);
-    } else if (_sliderTags[sliderId] == 'app' && _assignedApps[sliderId] != null) {
+    } else if (_sliderTags[sliderId] == 'app' &&
+        _assignedApps[sliderId] != null) {
       final app = _assignedApps[sliderId];
       if (app != null) {
         _applicationManager.assignApplicationToSlider(sliderId, app);
@@ -45,7 +51,7 @@ class _HomePageState extends State<HomePage> {
     // Prevent notification spam
     if (_isNotificationInProgress) return;
     if (connected == _isCurrentlyConnected) return;
-    
+
     _isNotificationInProgress = true;
     _isCurrentlyConnected = connected;
 
@@ -59,7 +65,9 @@ class _HomePageState extends State<HomePage> {
               color: Colors.white,
             ),
             const SizedBox(width: 8),
-            Text(connected ? "MixLit device connected" : "MixLit device disconnected"),
+            Text(connected
+                ? "MixLit device connected"
+                : "MixLit device disconnected"),
           ],
         ),
         backgroundColor: connected ? Colors.green : Colors.red,
@@ -80,10 +88,8 @@ class _HomePageState extends State<HomePage> {
       if (!isConnected && !_hasShownInitialDialog) {
         _hasShownInitialDialog = true;
         if (mounted) {
-          FailedToConnectToDeviceDialog.show(
-            context,
-            "Couldn't detect your MixLit, app will maintain basic functionality."
-          );
+          FailedToConnectToDeviceDialog.show(context,
+              "Couldn't detect your MixLit, app will maintain basic functionality.");
         }
       }
     });
@@ -105,14 +111,14 @@ class _HomePageState extends State<HomePage> {
   void _setupSliderListener() {
     _worker.sliderData.listen(
       (data) {
-          setState(() {
-            data.forEach((sliderId, sliderValue) {
-              if (sliderId >= 0 && sliderId < _sliderValues.length) {
-                _sliderValues[sliderId] = sliderValue.toDouble();
-                _handleVolumeAdjustment(sliderId, sliderValue.toDouble());
-              }
-            });
+        setState(() {
+          data.forEach((sliderId, sliderValue) {
+            if (sliderId >= 0 && sliderId < _sliderValues.length) {
+              _sliderValues[sliderId] = sliderValue.toDouble();
+              _handleVolumeAdjustment(sliderId, sliderValue.toDouble());
+            }
           });
+        });
       },
       onError: (error) {
         print('Slider stream error: $error');
@@ -177,15 +183,16 @@ class _HomePageState extends State<HomePage> {
                     setState(() {});
                   },
                   onSliderChange: (sliderIndex, value) {
-                      setState(() {
-                        _sliderValues[sliderIndex] = value;
-                        _handleVolumeAdjustment(sliderIndex, value);
-                      });
+                    setState(() {
+                      _sliderValues[sliderIndex] = value;
+                      _handleVolumeAdjustment(sliderIndex, value);
+                    });
                   },
                   onSelectDefaultDevice: (sliderIndex, isDefault) {
-                      setState(() {
-                        _sliderTags[sliderIndex] = isDefault ? 'defaultDevice' : 'unassigned';
-                      });
+                    setState(() {
+                      _sliderTags[sliderIndex] =
+                          isDefault ? 'defaultDevice' : 'unassigned';
+                    });
                   },
                 ),
                 Positioned(

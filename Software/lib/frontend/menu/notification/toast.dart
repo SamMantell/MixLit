@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui';
 import 'package:flutter/material.dart';
 
 class Toast extends StatefulWidget {
@@ -28,7 +27,7 @@ class Toast extends StatefulWidget {
     Duration duration = const Duration(seconds: 3),
   }) {
     OverlayEntry overlayEntry;
-    
+
     overlayEntry = OverlayEntry(
       builder: (context) => Toast(
         icon: icon,
@@ -55,7 +54,7 @@ class _ToastState extends State<Toast> with SingleTickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
-    
+
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 500),
@@ -104,53 +103,53 @@ class _ToastState extends State<Toast> with SingleTickerProviderStateMixin {
         return Positioned(
           bottom: 32.0 + (_slideAnimation.value * 100),
           right: _slideAnimation.value * -400,
-            child: Container(
-              width: 300,
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.black.withOpacity(0.75),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
-                    children: [
-                      Icon(
-                        widget.icon,
-                        color: widget.color,
-                        size: 24,
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          widget.message,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 14,
-                            decoration: TextDecoration.none,
-                          ),
+          child: Container(
+            width: 300,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.black.withOpacity(0.75),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    Icon(
+                      widget.icon,
+                      color: widget.color,
+                      size: 24,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        widget.message,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          decoration: TextDecoration.none,
                         ),
                       ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  // Progress bar
-                  TweenAnimationBuilder<double>(
-                    duration: widget.duration,
-                    tween: Tween(begin: 0.0, end: 1.0),
-                    builder: (context, value, child) {
-                      return LinearProgressIndicator(
-                        value: value,
-                        backgroundColor: Colors.white.withOpacity(0.1),
-                        valueColor: AlwaysStoppedAnimation<Color>(widget.color),
-                      );
-                    },
-                  ),
-                ],
-              ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                // Progress bar
+                TweenAnimationBuilder<double>(
+                  duration: widget.duration,
+                  tween: Tween(begin: 0.0, end: 1.0),
+                  builder: (context, value, child) {
+                    return LinearProgressIndicator(
+                      value: value,
+                      backgroundColor: Colors.white.withOpacity(0.1),
+                      valueColor: AlwaysStoppedAnimation<Color>(widget.color),
+                    );
+                  },
+                ),
+              ],
             ),
+          ),
         );
       },
     );
