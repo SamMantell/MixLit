@@ -194,7 +194,8 @@ void setup()
         {
             Serial.println("mixlit");
             FastLED.setBrightness(10);
-            delay(100);
+            delay(200);
+            needsUpdate = true;
             return;
         }
     }
@@ -209,7 +210,8 @@ void loop()
   if (c == 63)
   {
       Serial.println("mixlit");
-      delay(100);
+      delay(200);
+      needsUpdate = true;
   }
 
   stringToSendToSoftware = "";
@@ -247,7 +249,7 @@ void loop()
       FastLED.show();
     }
 
-    if ((abs(currentSliderState[i] - previousSliderState[i]) > 3))
+    if ((abs(currentSliderState[i] - previousSliderState[i]) > 3 || needsUpdate))
     {
       previousSliderState[i] = currentSliderState[i];
       stringToSendToSoftware += i;
@@ -256,6 +258,8 @@ void loop()
       stringToSendToSoftware += "|";
     }
   }
+
+  needsUpdate = false;
 
   /*
   for (int i = 0; i < NUM_OF_POTENTIOMETERS; i++)
