@@ -95,6 +95,9 @@ bool needsUpdate;
 String stringToSendToSoftware;
 String serialDataFromPC;
 
+uint8_t loadingValue = 0;
+bool loadingUp = true;
+
 // SetLEDs Function for Led Strip Control
 void setLEDs(int iCurrentValue, int ledStrip)
 {
@@ -188,18 +191,34 @@ void setup()
   {
     if (Serial.available())
     {
-        char c = Serial.read();
+      char c = Serial.read();
         
-        if (c == 63)
-        {
-            Serial.println("mixlit");
-            FastLED.setBrightness(10);
-            delay(200);
-            needsUpdate = true;
-            return;
-        }
+      if (c == 63)
+      {
+          Serial.println("mixlit");
+          FastLED.setBrightness(10);
+          delay(200);
+          needsUpdate = true;
+          return;
+      }
     }
-    delay(1);
+    delay(50);
+    for (int i = 0; i < NUM_OF_SLIDERS; i++)
+    {
+      if (loadingUp)
+      {
+        loadingValue++;
+        if (loadingValue == 254) loadingUp = false;
+      }
+      else
+      {
+        loadingValue--;
+        if (loadingValue == 0) loadingUp = true;
+      }
+      FastLED.setBrightness(loadingValue/8);
+      setLEDs(128, i);
+    }
+    FastLED.show();
   }
 }
 
@@ -246,7 +265,6 @@ void loop()
       }
 
       setLEDs(currentSliderState[i], i);
-      FastLED.show();
     }
 
     if ((abs(currentSliderState[i] - previousSliderState[i]) > 3 || needsUpdate))
@@ -258,6 +276,8 @@ void loop()
       stringToSendToSoftware += "|";
     }
   }
+
+  FastLED.show();
 
   needsUpdate = false;
 
@@ -302,5 +322,5 @@ void loop()
     Serial.println(stringToSendToSoftware);
   }
 
-  delay(20);
+  delay(50);
 }
