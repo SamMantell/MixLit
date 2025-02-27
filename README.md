@@ -1,5 +1,4 @@
-![Logo](https://media.discordapp.net/attachments/927695433994764358/1138914098034266192/MixLit-Logo-RGB.png?width=809&height=304)
-![logo](https://media.discordapp.net/attachments/927695433994764358/1138915898586050570/MixLit-Slogan_2.png?width=809&height=67)
+![Logo]([https://media.discordapp.net/attachments/927695433994764358/1138914098034266192/MixLit-Logo-RGB.png?width=809&height=304](https://github.com/SamMantell/MixLit/blob/main/assets/logos/mixlit-logo-2-LARGE.psd))
 
 
 # 📦 Hardware
