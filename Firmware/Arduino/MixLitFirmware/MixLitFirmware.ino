@@ -95,6 +95,9 @@ bool needsUpdate;
 String stringToSendToSoftware;
 String serialDataFromPC;
 
+uint8_t loadingValue = 0;
+bool loadingUp = true;
+
 // SetLEDs Function for Led Strip Control
 void setLEDs(int iCurrentValue, int ledStrip)
 {
@@ -186,19 +189,50 @@ void setup()
 
   while (true)
   {
-    String initialConnection = Serial.readString();
-    if (initialConnection == "?\n")
+    if (Serial.available())
     {
-      Serial.println("mixlit");
-      FastLED.setBrightness(10);
-      return;
+      char c = Serial.read();
+        
+      if (c == 63)
+      {
+          Serial.println("mixlit");
+          FastLED.setBrightness(10);
+          delay(200);
+          needsUpdate = true;
+          return;
+      }
     }
-    delay(200);
+    delay(50);
+    for (int i = 0; i < NUM_OF_SLIDERS; i++)
+    {
+      if (loadingUp)
+      {
+        loadingValue++;
+        if (loadingValue == 254) loadingUp = false;
+      }
+      else
+      {
+        loadingValue--;
+        if (loadingValue == 0) loadingUp = true;
+      }
+      FastLED.setBrightness(loadingValue/8);
+      setLEDs(128, i);
+    }
+    FastLED.show();
   }
 }
 
 void loop()
 {
+
+  char c = Serial.read();
+  if (c == 63)
+  {
+      Serial.println("mixlit");
+      delay(200);
+      needsUpdate = true;
+  }
+
   stringToSendToSoftware = "";
 
   for (int i = 0; i < NUM_OF_SLIDERS; i++)
@@ -231,10 +265,9 @@ void loop()
       }
 
       setLEDs(currentSliderState[i], i);
-      FastLED.show();
     }
 
-    if ((abs(currentSliderState[i] - previousSliderState[i]) > 3))
+    if ((abs(currentSliderState[i] - previousSliderState[i]) > 3 || needsUpdate))
     {
       previousSliderState[i] = currentSliderState[i];
       stringToSendToSoftware += i;
@@ -243,6 +276,10 @@ void loop()
       stringToSendToSoftware += "|";
     }
   }
+
+  FastLED.show();
+
+  needsUpdate = false;
 
   /*
   for (int i = 0; i < NUM_OF_POTENTIOMETERS; i++)
@@ -285,5 +322,5 @@ void loop()
     Serial.println(stringToSendToSoftware);
   }
 
-  delay(20);
+  delay(50);
 }
