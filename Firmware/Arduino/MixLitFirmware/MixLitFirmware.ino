@@ -60,6 +60,7 @@ bool isAnimated = false;
 uint8_t ColorIndex;
 int colorIndexOffset;
 
+// Colour Pallete of the LEDs
 CRGBPalette16 All_ColorPallete[NUM_OF_LED_STRIPS] = 
 {
   CRGBPalette16   (
@@ -89,16 +90,20 @@ char tempFullHexStorage[128];
 char tempPartHexStorage[128];
 uint32_t HEX_VALUE[8];
 int SliderToChange;
+
+// Used To Manually Send An Update
 bool needsUpdate;
 
 // Strings for Sending Data to Software
 String stringToSendToSoftware;
 String serialDataFromPC;
 
+// Variables for Loading Animations
 uint8_t loadingValue = 0;
+uint8_t loadingBrightness = 0;
 bool loadingUp = true;
 
-// SetLEDs Function for Led Strip Control
+// SetLEDs Function for Led Strip Control, it takes the value of the slider and calculates how many leds should be on and the brightness of the final one.
 void setLEDs(int iCurrentValue, int ledStrip)
 {
   if (isAnimated) colorIndexOffset++;
@@ -165,6 +170,7 @@ void setup()
 {
   Serial.begin(115200);
 
+  //Set PinModes for Sliders Pots and Buttons
   for (int i = 0; i > NUM_OF_SLIDERS; i++)
   {
     pinMode(Sliders[i], INPUT);
@@ -187,6 +193,7 @@ void setup()
   FastLED.addLeds<WS2812, 8, GRB>(leds[3], NUM_OF_LEDS_PER_STRIP);
   FastLED.addLeds<WS2812, 7, GRB>(leds[4], NUM_OF_LEDS_PER_STRIP);
 
+  // Wait for a response from the MixLit Software
   while (true)
   {
     if (Serial.available())
@@ -202,20 +209,17 @@ void setup()
           return;
       }
     }
-    delay(50);
-    for (int i = 0; i < NUM_OF_SLIDERS; i++)
+
+    // Loading Animation
+    delay(20);
+    if (loadingValue == 255) loadingUp = false;
+    else if (loadingValue == 0) loadingUp = true;
+    if (loadingUp) loadingValue++;
+    else loadingValue--;
+
+    for (int i = 0; i < NUM_OF_LED_STRIPS; i++)
     {
-      if (loadingUp)
-      {
-        loadingValue++;
-        if (loadingValue == 254) loadingUp = false;
-      }
-      else
-      {
-        loadingValue--;
-        if (loadingValue == 0) loadingUp = true;
-      }
-      FastLED.setBrightness(loadingValue/8);
+      FastLED.setBrightness(loadingValue / 8);
       setLEDs(128, i);
     }
     FastLED.show();
