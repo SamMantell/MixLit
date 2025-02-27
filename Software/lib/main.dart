@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'backend/worker.dart';
 import 'frontend/home_page.dart';
 
 void main() {
@@ -12,12 +11,12 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Device Control',
+      title: 'Mixlit',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
         useMaterial3: true,
       ),
-      home: HomePage(),
+      home: const HomePage(),
     );
   }
 }

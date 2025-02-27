@@ -7,13 +7,13 @@ class CustomSlider extends StatelessWidget {
   final String label;
   final ValueChanged<double> onChanged;
 
-  CustomSlider({required this.value, required this.label, required this.onChanged});
+  const CustomSlider({super.key, required this.value, required this.label, required this.onChanged});
 
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
-        Text(label, style: TextStyle(fontSize: 18)),
+        Text(label, style: const TextStyle(fontSize: 18)),
         Slider(
           value: value,
           min: 0,

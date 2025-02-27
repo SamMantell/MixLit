@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 class ApplicationIcon extends StatelessWidget {
   final Uint8List iconData;
 
-  ApplicationIcon({required this.iconData});
+  const ApplicationIcon({super.key, required this.iconData});
 
   @override
   Widget build(BuildContext context) {
@@ -15,7 +15,7 @@ class ApplicationIcon extends StatelessWidget {
       width: 32,
       height: 32,
       errorBuilder: (context, error, stackTrace) {
-        return Icon(Icons.apps, size: 32);  // Default icon if loading fails
+        return const Icon(Icons.apps, size: 32);  // Default icon if loading fails
       },
     );
   }
