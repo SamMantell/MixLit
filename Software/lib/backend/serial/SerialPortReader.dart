@@ -4,7 +4,6 @@ import 'package:flutter_libserialport/flutter_libserialport.dart';
 
 class SerialPortReader {
   static const int CHUNK_SIZE = 256; //dont change unless sigma
-
   final SerialPort _port;
   final StreamController<List<int>> _controller = StreamController<List<int>>();
   final List<int> _buffer = [];

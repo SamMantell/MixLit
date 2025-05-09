@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:mixlit/backend/data/StorageManager.dart';
 import 'package:win32audio/win32audio.dart';
 
@@ -5,6 +7,13 @@ class ApplicationManager {
   Map<int, ProcessVolume> assignedApplications = {};
   List<double> sliderValues = List.filled(8, 0.5); // Assuming 8 sliders
   List<String> sliderTags = List.filled(8, 'defaultDevice');
+
+  // Rate limiting due to windows buffering volume requests (for some reason)
+  static const int RATE_LIMIT_MS = 32; //milliseconds
+  DateTime _lastVolumeAdjustment = DateTime.now();
+  Timer? _pendingVolumeTimer;
+  Map<int, double> _pendingAppVolumes = {};
+  double? _pendingDeviceVolume;
 
   ApplicationManager() {
     _loadSavedConfiguration();
@@ -102,26 +111,55 @@ class ApplicationManager {
     // Update slider value
     sliderValues[sliderIndex] = sliderValue;
 
-    ProcessVolume? appProcess = assignedApplications[sliderIndex];
-    if (appProcess != null) {
-      // More precise volume calculation
-      double volumeLevel = sliderValue / 1024;
-      Audio.setAudioMixerVolume(appProcess.processId, volumeLevel);
-      if (volumeLevel <= 0.009) {
-        Audio.setAudioMixerVolume(appProcess.processId, 0.0001);
-      }
-      print(
-          "Set volume of ${appProcess.processPath} to ${(volumeLevel * 100).round()}%");
+    _pendingAppVolumes[sliderIndex] = sliderValue;
+
+    _scheduleVolumeUpdate();
+  }
+
+  void _scheduleVolumeUpdate() {
+    if (_pendingVolumeTimer != null && _pendingVolumeTimer!.isActive) {
+      return;
     }
 
-    // Save configuration after volume adjustment
-    _saveConfiguration();
+    final now = DateTime.now();
+    final timeSinceLastUpdate =
+        now.difference(_lastVolumeAdjustment).inMilliseconds;
+
+    if (timeSinceLastUpdate < RATE_LIMIT_MS) {
+      final delayMs = RATE_LIMIT_MS - timeSinceLastUpdate;
+      _pendingVolumeTimer =
+          Timer(Duration(milliseconds: delayMs), _applyPendingVolumeChanges);
+    } else {
+      _applyPendingVolumeChanges();
+    }
+  }
+
+  void _applyPendingVolumeChanges() {
+    _lastVolumeAdjustment = DateTime.now();
+
+    _pendingAppVolumes.forEach((sliderIndex, sliderValue) {
+      ProcessVolume? appProcess = assignedApplications[sliderIndex];
+      if (appProcess != null) {
+        double volumeLevel = sliderValue / 1024;
+        Audio.setAudioMixerVolume(appProcess.processId, volumeLevel);
+        if (volumeLevel <= 0.009) {
+          Audio.setAudioMixerVolume(appProcess.processId, 0.0001);
+        }
+      }
+    });
+    _pendingAppVolumes.clear();
+
+    if (_pendingDeviceVolume != null) {
+      int volumeLevel = ((_pendingDeviceVolume! / 1024) * 100).round();
+      Audio.setVolume(volumeLevel / 100, AudioDeviceType.output);
+      _pendingDeviceVolume = null;
+    }
   }
 
   void adjustDeviceVolume(double sliderValue) {
-    int volumeLevel = ((sliderValue / 1024) * 100).round();
-    Audio.setVolume(volumeLevel / 100, AudioDeviceType.output);
-    print("Set device volume to $volumeLevel%");
+    _pendingDeviceVolume = sliderValue;
+
+    _scheduleVolumeUpdate();
 
     // Save device volume
     StorageManager.instance.saveData('deviceVolume', sliderValue);
@@ -147,5 +185,9 @@ class ApplicationManager {
       ..removeData('sliderTags')
       ..removeData('assignedApps')
       ..removeData('deviceVolume');
+  }
+
+  void dispose() {
+    _pendingVolumeTimer?.cancel();
   }
 }
