@@ -267,7 +267,7 @@ void loop()
 
   for (int i = 0; i < NUM_OF_SLIDERS; i++)
   {
-    if ((abs(currentSliderState[i] - previousSliderState[i]) > 3) || isAnimated || needsUpdate)
+    if ((abs(currentSliderState[i] - previousSliderState[i]) > 5) || isAnimated || needsUpdate)
     {
       if (currentSliderState[i] > 1020)
       {
@@ -281,7 +281,7 @@ void loop()
       setLEDs(currentSliderState[i], i);
     }
 
-    if ((abs(currentSliderState[i] - previousSliderState[i]) > 3 || needsUpdate))
+    if ((abs(currentSliderState[i] - previousSliderState[i]) > 5 || needsUpdate))
     {
       previousSliderState[i] = currentSliderState[i];
       stringToSendToSoftware += i;
