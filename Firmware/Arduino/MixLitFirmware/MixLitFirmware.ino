@@ -91,6 +91,8 @@ uint32_t HEX_VALUE[8];
 int SliderToChange;
 bool needsUpdate;
 
+bool isConnected;
+
 // Strings for Sending Data to Software
 String stringToSendToSoftware;
 String serialDataFromPC;
@@ -189,7 +191,7 @@ void setup()
 
   while (true)
   {
-    if (Serial.available())
+    if (Serial.available() && !isConnected)
     {
       char c = Serial.read();
         
@@ -199,9 +201,15 @@ void setup()
           FastLED.setBrightness(10);
           delay(200);
           needsUpdate = true;
+          isConnected = true;
           return;
       }
     }
+    else
+    {
+      isConnected = false;
+    }
+
     delay(50);
     for (int i = 0; i < NUM_OF_SLIDERS; i++)
     {
@@ -224,13 +232,19 @@ void setup()
 
 void loop()
 {
-
-  char c = Serial.read();
-  if (c == 63)
+  if (Serial.available() && !isConnected)
   {
-      Serial.println("mixlit");
-      delay(200);
-      needsUpdate = true;
+    char c = Serial.read();
+    if (c == 63)
+    {
+        Serial.println("mixlit");
+        needsUpdate = true;
+        isConnected = true;
+    }
+  }
+  else
+  {
+    isConnected = false;
   }
 
   stringToSendToSoftware = "";
