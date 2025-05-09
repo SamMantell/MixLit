@@ -198,7 +198,7 @@ void setup()
       if (c == 63)
       {
           Serial.println("mixlit");
-          FastLED.setBrightness(10);
+          FastLED.setBrightness(8);
           delay(200);
           needsUpdate = true;
           isConnected = true;
@@ -267,13 +267,13 @@ void loop()
 
   for (int i = 0; i < NUM_OF_SLIDERS; i++)
   {
-    if ((abs(currentSliderState[i] - previousSliderState[i]) > 3) || isAnimated || needsUpdate)
+    if ((abs(currentSliderState[i] - previousSliderState[i]) > 6) || isAnimated || needsUpdate)
     {
-      if (currentSliderState[i] > 1020)
+      if (currentSliderState[i] > 1015)
       {
         currentSliderState[i] = 1023;
       }
-      else if (currentSliderState[i] < 3)
+      else if (currentSliderState[i] < 8)
       {
         currentSliderState[i] = 0;
       }
@@ -281,7 +281,7 @@ void loop()
       setLEDs(currentSliderState[i], i);
     }
 
-    if ((abs(currentSliderState[i] - previousSliderState[i]) > 3 || needsUpdate))
+    if ((abs(currentSliderState[i] - previousSliderState[i]) > 6 || needsUpdate))
     {
       previousSliderState[i] = currentSliderState[i];
       stringToSendToSoftware += i;
