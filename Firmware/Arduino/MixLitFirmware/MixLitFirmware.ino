@@ -321,6 +321,4 @@ void loop()
   {
     Serial.println(stringToSendToSoftware);
   }
-
-  delay(50);
 }
