@@ -43,17 +43,11 @@ class ApplicationManager {
                   _normalizeProcessPath(appData['processPath'] ?? '');
             });
 
-            if (matchingApp != null) {
-              assignedApplications[index] = matchingApp;
+            assignedApplications[index] = matchingApp;
 
-              // Restore volume for the app
-              if (sliderTags[index] == 'app') {
-                adjustVolume(index, sliderValues[index]);
-              }
-            } else {
-              // Clear the assignment if no matching app is found
-              assignedApplications.remove(index);
-              sliderTags[index] = 'defaultDevice';
+            // Restore volume for the app
+            if (sliderTags[index] == 'app') {
+              adjustVolume(index, sliderValues[index]);
             }
           }
         });
