@@ -41,7 +41,6 @@ class _HomePageState extends State<HomePage> {
         _assignedApps[sliderId] != null) {
       final app = _assignedApps[sliderId];
       if (app != null) {
-        _applicationManager.assignApplicationToSlider(sliderId, app);
         _applicationManager.adjustVolume(sliderId, value);
       }
     }
