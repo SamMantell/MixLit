@@ -15,8 +15,8 @@ class HomePage extends StatefulWidget {
   _HomePageState createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> {
-  final SerialWorker _worker = SerialWorker(); // Updated to use SerialWorker
+class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
+  final SerialWorker _worker = SerialWorker();
   final ApplicationManager _applicationManager = ApplicationManager();
 
   final List<double> _sliderValues = [0, 0, 0, 0, 0];
@@ -30,10 +30,30 @@ class _HomePageState extends State<HomePage> {
     'unassigned'
   ];
 
+  // Mute button
+  final List<bool> _muteStates = [false, false, false, false, false];
+  final List<AnimationController> _buttonAnimControllers = [];
+  final List<Animation<double>> _buttonAnimations = [];
+
+  final List<DateTime?> _buttonPressStartTimes = [null, null, null, null, null];
+  final List<bool> _isLongPressing = [false, false, false, false, false];
+  final List<bool> _wasUnmutedBeforeLongPress = [
+    false,
+    false,
+    false,
+    false,
+    false
+  ];
+  final List<double> _previousVolumeValues = [1.0, 1.0, 1.0, 1.0, 1.0];
+  static const Duration _longPressDuration =
+      Duration(milliseconds: 1000); //2s hold
+  static const double _muteVolume = 0.0001;
+
   bool _hasShownInitialDialog = false;
   bool _isCurrentlyConnected = false;
   bool _isNotificationInProgress = false;
 
+  // Adjusts the volume for either a device or an app
   void _handleVolumeAdjustment(int sliderId, double value) {
     if (_sliderTags[sliderId] == 'defaultDevice') {
       _applicationManager.adjustDeviceVolume(value);
@@ -44,6 +64,90 @@ class _HomePageState extends State<HomePage> {
         _applicationManager.adjustVolume(sliderId, value);
       }
     }
+  }
+
+  void _muteAudio(int sliderIndex) {
+    if (!_muteStates[sliderIndex]) {
+      // Save the current volume before muting
+      _previousVolumeValues[sliderIndex] = _sliderValues[sliderIndex];
+    }
+
+    _muteStates[sliderIndex] = true;
+    _sliderValues[sliderIndex] = _muteVolume;
+    _handleVolumeAdjustment(sliderIndex, _muteVolume);
+    _buttonAnimControllers[sliderIndex].forward();
+  }
+
+  void _unmuteAudio(int sliderIndex) {
+    _muteStates[sliderIndex] = false;
+    _sliderValues[sliderIndex] = _previousVolumeValues[sliderIndex];
+    _handleVolumeAdjustment(sliderIndex, _previousVolumeValues[sliderIndex]);
+    _buttonAnimControllers[sliderIndex].reverse();
+  }
+
+  void _toggleMuteState(int sliderIndex) {
+    setState(() {
+      if (_muteStates[sliderIndex]) {
+        _unmuteAudio(sliderIndex);
+      } else {
+        _muteAudio(sliderIndex);
+      }
+    });
+  }
+
+  void _handleButtonDown(int buttonIndex) {
+    print('Button down: $buttonIndex');
+
+    _buttonPressStartTimes[buttonIndex] = DateTime.now();
+
+    setState(() {
+      _wasUnmutedBeforeLongPress[buttonIndex] = !_muteStates[buttonIndex];
+
+      if (_muteStates[buttonIndex]) {
+        _unmuteAudio(buttonIndex);
+      } else {
+        _muteAudio(buttonIndex);
+      }
+
+      _isLongPressing[buttonIndex] = false;
+    });
+
+    Future.delayed(_longPressDuration, () {
+      final pressStartTime = _buttonPressStartTimes[buttonIndex];
+      if (pressStartTime != null) {
+        print('Long press detected for button: $buttonIndex');
+        setState(() {
+          _isLongPressing[buttonIndex] = true;
+        });
+      }
+    });
+  }
+
+  void _handleButtonUp(int buttonIndex) {
+    print('Button up: $buttonIndex');
+
+    final pressStartTime = _buttonPressStartTimes[buttonIndex];
+    if (pressStartTime == null) {
+      return;
+    }
+
+    final pressDuration = DateTime.now().difference(pressStartTime);
+    _buttonPressStartTimes[buttonIndex] = null;
+
+    setState(() {
+      if (_isLongPressing[buttonIndex]) {
+        print('Long press ended for button: $buttonIndex');
+        if (_wasUnmutedBeforeLongPress[buttonIndex]) {
+          if (_muteStates[buttonIndex]) {
+            _unmuteAudio(buttonIndex);
+          } else {
+            _muteAudio(buttonIndex);
+          }
+        }
+
+        _isLongPressing[buttonIndex] = false;
+      }
+    });
   }
 
   void _showConnectionNotification(bool connected) {
@@ -113,8 +217,11 @@ class _HomePageState extends State<HomePage> {
         setState(() {
           data.forEach((sliderId, sliderValue) {
             if (sliderId >= 0 && sliderId < _sliderValues.length) {
-              _sliderValues[sliderId] = sliderValue.toDouble();
-              _handleVolumeAdjustment(sliderId, sliderValue.toDouble());
+              // Only update slider if it's not muted
+              if (!_muteStates[sliderId]) {
+                _sliderValues[sliderId] = sliderValue.toDouble();
+                _handleVolumeAdjustment(sliderId, sliderValue.toDouble());
+              }
             }
           });
         });
@@ -125,17 +232,70 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  void _setupButtonListener() {
+    _worker.buttonData.listen(
+      (data) {
+        data.forEach((buttonId, state) {
+          print('Button data received: $buttonId | $state');
+
+          if (buttonId.length == 1 &&
+              buttonId.codeUnitAt(0) >= 'A'.codeUnitAt(0) &&
+              buttonId.codeUnitAt(0) <= 'E'.codeUnitAt(0)) {
+            // A-E to 0-4 (button mapping)
+            final index = buttonId.codeUnitAt(0) - 'A'.codeUnitAt(0);
+
+            print(
+                'Processing button: ${buttonId} (index: $index), state: $state');
+
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (state == 1) {
+                _handleButtonDown(index);
+              } else if (state == 0) {
+                _handleButtonUp(index);
+              }
+            });
+          }
+        });
+      },
+      onError: (error) {
+        print('Button stream error: $error');
+      },
+    );
+  }
+
   @override
   void initState() {
     super.initState();
+    for (int i = 0; i < 5; i++) {
+      final controller = AnimationController(
+        duration: const Duration(milliseconds: 200),
+        vsync: this,
+      );
+
+      final animation = CurvedAnimation(
+        parent: controller,
+        curve: Curves.easeInOut,
+      );
+
+      _buttonAnimControllers.add(controller);
+      _buttonAnimations.add(animation);
+    }
+
     _initializeDeviceConnection();
     _setupConnectionListener();
     _setupSliderListener();
+    _setupButtonListener();
   }
 
   @override
   void dispose() {
     _worker.dispose();
+
+    // Dispose animation controllers
+    for (var controller in _buttonAnimControllers) {
+      controller.dispose();
+    }
+
     super.dispose();
   }
 
@@ -155,51 +315,143 @@ class _HomePageState extends State<HomePage> {
             fit: BoxFit.cover,
           ),
           Center(
-            child: Stack(
-              alignment: Alignment.center,
-              clipBehavior: Clip.none,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                SliderContainer(
-                  containerWidth: containerWidth,
-                  containerHeight: containerHeight,
-                  sliderValues: _sliderValues,
-                  assignedApps: _assignedApps,
-                  appIcons: _appIcons,
-                  sliderTags: _sliderTags,
-                  onAssignApp: (sliderIndex) async {
-                    _assignedApps = await assignApplication(
-                      context,
-                      sliderIndex,
-                      _applicationManager,
-                      _assignedApps,
-                      _appIcons,
-                      _sliderValues,
-                      _sliderTags,
-                    );
-                    if (_assignedApps[sliderIndex] != null) {
-                      _sliderTags[sliderIndex] = 'app';
-                    }
-                    setState(() {});
-                  },
-                  onSliderChange: (sliderIndex, value) {
-                    setState(() {
-                      _sliderValues[sliderIndex] = value;
-                      _handleVolumeAdjustment(sliderIndex, value);
-                    });
-                  },
-                  onSelectDefaultDevice: (sliderIndex, isDefault) {
-                    setState(() {
-                      _sliderTags[sliderIndex] =
-                          isDefault ? 'defaultDevice' : 'unassigned';
-                    });
-                  },
+                Stack(
+                  alignment: Alignment.center,
+                  clipBehavior: Clip.none,
+                  children: [
+                    SliderContainer(
+                      containerWidth: containerWidth,
+                      containerHeight: containerHeight,
+                      sliderValues: _sliderValues,
+                      assignedApps: _assignedApps,
+                      appIcons: _appIcons,
+                      sliderTags: _sliderTags,
+                      onAssignApp: (sliderIndex) async {
+                        _assignedApps = await assignApplication(
+                          context,
+                          sliderIndex,
+                          _applicationManager,
+                          _assignedApps,
+                          _appIcons,
+                          _sliderValues,
+                          _sliderTags,
+                        );
+                        if (_assignedApps[sliderIndex] != null) {
+                          _sliderTags[sliderIndex] = 'app';
+                        }
+                        setState(() {});
+                      },
+                      onSliderChange: (sliderIndex, value) {
+                        setState(() {
+                          _sliderValues[sliderIndex] = value;
+                          _handleVolumeAdjustment(sliderIndex, value);
+                        });
+                      },
+                      onSelectDefaultDevice: (sliderIndex, isDefault) {
+                        setState(() {
+                          _sliderTags[sliderIndex] =
+                              isDefault ? 'defaultDevice' : 'unassigned';
+                        });
+                      },
+                    ),
+                    Positioned(
+                      top: -(containerHeight * 0.25),
+                      child: Image.asset(
+                        'lib/frontend/assets/images/logo/mixlit_full.png',
+                        height: containerHeight * 0.22,
+                        fit: BoxFit.contain,
+                      ),
+                    ),
+                  ],
                 ),
-                Positioned(
-                  top: -(containerHeight * 0.25),
-                  child: Image.asset(
-                    'lib/frontend/assets/images/logo/mixlit_full.png',
-                    height: containerHeight * 0.22,
-                    fit: BoxFit.contain,
+
+                // Add Mute Buttons Container below slider container
+                const SizedBox(height: 20),
+                Container(
+                  width: containerWidth,
+                  height: 60,
+                  decoration: BoxDecoration(
+                    color: Colors.black.withOpacity(0.55),
+                    borderRadius: BorderRadius.circular(15),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.3),
+                        spreadRadius: 2,
+                        blurRadius: 5,
+                        offset: const Offset(0, 3),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: List.generate(5, (index) {
+                      return AnimatedBuilder(
+                          animation: _buttonAnimations[index],
+                          builder: (context, child) {
+                            final Color baseColor = _muteStates[index]
+                                ? const Color(0xFFFF5252)
+                                : const Color(0xFF4CAF50);
+
+                            return GestureDetector(
+                              onTapDown: (_) => _handleButtonDown(index),
+                              onTapUp: (_) => _handleButtonUp(index),
+                              onTapCancel: () {
+                                // Handle case where tap is canceled
+                                if (_buttonPressStartTimes[index] != null &&
+                                    _isLongPressing[index]) {
+                                  // If this was a long press, restore original state on cancel
+                                  setState(() {
+                                    if (_wasUnmutedBeforeLongPress[index]) {
+                                      // Since we toggled on press down, we need to toggle again to restore
+                                      if (_muteStates[index]) {
+                                        _unmuteAudio(index);
+                                      } else {
+                                        _muteAudio(index);
+                                      }
+                                    }
+                                    _isLongPressing[index] = false;
+                                  });
+                                }
+                                _buttonPressStartTimes[index] = null;
+                              },
+                              child: Container(
+                                width: 50,
+                                height: 50,
+                                decoration: BoxDecoration(
+                                  color: Color.lerp(
+                                    baseColor,
+                                    Colors.white,
+                                    _buttonAnimations[index].value * 0.5,
+                                  ),
+                                  borderRadius: BorderRadius.circular(10),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: baseColor.withOpacity(0.5),
+                                      spreadRadius:
+                                          _buttonAnimations[index].value * 5,
+                                      blurRadius: 7,
+                                    ),
+                                  ],
+                                ),
+                                transform: Matrix4.identity()
+                                  ..scale(1.0 -
+                                      (_buttonAnimations[index].value * 0.1)),
+                                child: Center(
+                                  child: Icon(
+                                    _muteStates[index]
+                                        ? Icons.volume_off
+                                        : Icons.volume_up,
+                                    color: Colors.white,
+                                    size: 24,
+                                  ),
+                                ),
+                              ),
+                            );
+                          });
+                    }),
                   ),
                 ),
               ],
