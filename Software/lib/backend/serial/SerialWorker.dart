@@ -13,6 +13,8 @@ class SerialWorker {
   ReceivePort? _receivePort;
   SendPort? _isolateSendPort;
   StreamSubscription? _connectionStateSubscription;
+  final Completer<void> _initCompleter = Completer<void>();
+  Future<void> get initialized => _initCompleter.future;
 
   Stream<Map<int, int>> get sliderData => _sliderDataController.stream;
   Stream<Map<String, int>> get buttonData => _buttonDataController.stream;
@@ -25,21 +27,24 @@ class SerialWorker {
       onDataReceived: _handleData,
       onError: _handleError,
     );
+    _connectionManager.initialized.then((_) {
+      _connectionStateSubscription =
+          _connectionStateController.stream.listen((connected) {
+        print('Connection state changed: $connected');
+        if (!connected) {
+          _cleanupDataProcessing();
+        } else {
+          _initializeDataProcessing();
+        }
+      });
 
-    // Listen to connection state changes
-    _connectionStateSubscription =
-        _connectionStateController.stream.listen((connected) {
-      if (!connected) {
-        // Clean up data processing when disconnected
-        _cleanupDataProcessing();
-      } else {
-        // Reinitialize data processing when connected
-        _initializeDataProcessing();
-      }
+      _initializeDataProcessing().then((_) {
+        print('SerialWorker initialization complete');
+        if (!_initCompleter.isCompleted) {
+          _initCompleter.complete();
+        }
+      });
     });
-
-    // Initial setup of data processing
-    _initializeDataProcessing();
   }
 
   void _cleanupDataProcessing() {
@@ -62,10 +67,10 @@ class SerialWorker {
 
   void _handleError(dynamic error) {
     print('Serial error: $error');
-    // Additional error handling if needed
   }
 
   Future<void> dispose() async {
+    print('Disposing SerialWorker...');
     await _connectionStateSubscription?.cancel();
     await _connectionManager.dispose();
     _cleanupDataProcessing();
@@ -73,6 +78,7 @@ class SerialWorker {
     await _buttonDataController.close();
     await _rawDataController.close();
     await _connectionStateController.close();
+    print('SerialWorker disposal complete');
   }
 
   Future<void> _initializeDataProcessing() async {
@@ -80,11 +86,13 @@ class SerialWorker {
     _receivePort = ReceivePort();
 
     try {
+      print('Initializing data processing isolate...');
       final errorPort = ReceivePort();
       final completer = Completer<void>();
 
       _receivePort!.listen((message) {
         if (message is SendPort) {
+          print('Received isolate send port');
           _isolateSendPort = message;
           if (!completer.isCompleted) completer.complete();
         } else if (message is Map<int, int>) {
@@ -103,10 +111,19 @@ class SerialWorker {
         errorsAreFatal: true,
       );
 
+      errorPort.listen((error) {
+        print('Isolate error: $error');
+        if (!completer.isCompleted) {
+          completer.completeError(error);
+        }
+      });
+
       await completer.future.timeout(
         const Duration(seconds: 1),
-        onTimeout: () =>
-            throw TimeoutException('Isolate initialization timeout'),
+        onTimeout: () {
+          print('Isolate initialization timeout');
+          throw TimeoutException('Isolate initialization timeout');
+        },
       );
     } catch (e) {
       print('Error initializing data processing: $e');
@@ -181,5 +198,50 @@ class SerialWorker {
     } catch (e) {
       print('Isolate: Error parsing data: $e');
     }
+  }
+
+  Future<void> sendCommand(String command) async {
+    if (!isDeviceConnected) {
+      print('Cannot send command: device not connected');
+      return;
+    }
+
+    try {
+      if (command.length < 2) {
+        print('Invalid command format: too short');
+        return;
+      }
+
+      _rawDataController.add(command);
+
+      await _sendToDevice(command);
+    } catch (e) {
+      print('Error sending command to MixLit: $e');
+    }
+  }
+
+  Future<void> _sendToDevice(String data) async {
+    try {
+      final bytes = data.codeUnits;
+
+      if (_connectionManager.isConnected) {
+        final success = await _connectionManager.writeToPort(bytes);
+        if (success) {
+          //print('Data sent to device: $data');
+        } else {
+          throw Exception('Failed to write to port');
+        }
+      } else {
+        throw Exception('Not connected to device');
+      }
+    } catch (e) {
+      print('Error sending data to device: $e');
+      rethrow;
+    }
+  }
+
+  bool get isDeviceConnected {
+    bool connected = _connectionManager.isConnected;
+    return connected;
   }
 }

@@ -53,7 +53,8 @@ class FailedToConnectToDeviceDialog extends StatelessWidget {
               TextButton(
                 onPressed: () => Navigator.of(context).pop(),
                 style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
                   backgroundColor: Colors.white.withOpacity(0.1),
                 ),
                 child: const Text(

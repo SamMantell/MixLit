@@ -57,6 +57,7 @@ CRGB leds[NUM_OF_LED_STRIPS][NUM_OF_LEDS_PER_STRIP];
 
 // LED Strip Variables for Colour Control
 bool isAnimated = false;
+bool softwareLEDControl = true;
 uint8_t ColorIndex;
 int colorIndexOffset;
 
@@ -267,7 +268,7 @@ void loop()
 
   for (int i = 0; i < NUM_OF_SLIDERS; i++)
   {
-    if ((abs(currentSliderState[i] - previousSliderState[i]) > 5) || isAnimated || needsUpdate)
+    if (((abs(currentSliderState[i] - previousSliderState[i]) > 5) || isAnimated || needsUpdate) && !softwareLEDControl)
     {
       if (currentSliderState[i] > 1020)
       {
@@ -328,6 +329,22 @@ void loop()
       stringToSendToSoftware += "|";
       stringToSendToSoftware += int(currentButtonState[i]);
       stringToSendToSoftware += "|";
+    }
+  }
+
+  if (Serial.available() > 0) {
+    String command = Serial.peek();
+    if (command == "AUTO_LED_OFF") {
+      Serial.read(); 
+      softwareLEDControl = true;
+    } 
+    else if (command == "AUTO_LED_ON") {
+      Serial.read();
+      softwareLEDControl = false;
+      Serial.println("Automatic LED control enabled");
+    }
+    else {
+      readSerialDataAndSetLEDs();
     }
   }
 

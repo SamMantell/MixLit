@@ -5,37 +5,33 @@ import 'package:yaml_writer/yaml_writer.dart';
 
 class StorageManager {
   static final StorageManager _instance = StorageManager._internal();
-  factory StorageManager() => _instance;
-  StorageManager._internal();
 
-  // Singleton instance getter
   static StorageManager get instance => _instance;
 
-  // Get the path to the data directory
+  StorageManager._internal();
+
   Future<String> get _localPath async {
     final directory = await getApplicationDocumentsDirectory();
-    final mixlitDataDir = Directory('${directory.path}/data');
+    final mixlitDataDir = Directory('${directory.path}/MixLit/data');
 
-    // Create the directory if it doesn't exist
     if (!await mixlitDataDir.exists()) {
       await mixlitDataDir.create(recursive: true);
     }
 
+    print('Storage path: ${mixlitDataDir.path}');
     return mixlitDataDir.path;
   }
 
-  // Get the full file path for mixlit.yml
   Future<String> get _localFile async {
     final path = await _localPath;
     return '$path/mixlit.yml';
   }
 
-  // Save data to the YAML file
   Future<void> saveData(String key, dynamic data) async {
     try {
       final file = File(await _localFile);
+      print('Saving data to ${file.path}');
 
-      // Read existing data
       Map<String, dynamic> existingData = {};
       if (await file.exists()) {
         final contents = await file.readAsString();
@@ -45,60 +41,58 @@ class StorageManager {
         }
       }
 
-      // Update or add new data
       existingData[key] = data;
 
-      // Write updated data back to file
       final yamlWriter = YamlWriter();
-      await file.writeAsString(yamlWriter.write(existingData));
+      final yamlString = yamlWriter.write(existingData);
+      await file.writeAsString(yamlString);
     } catch (e) {
       print('Error saving data to storage: $e');
       rethrow;
     }
   }
 
-  // Retrieve data from the YAML file
   Future<dynamic> getData(String key, {dynamic defaultValue}) async {
     try {
       final file = File(await _localFile);
 
       if (!await file.exists()) {
+        print('File does not exist, returning default value');
         return defaultValue;
       }
 
       final contents = await file.readAsString();
       if (contents.isEmpty) {
+        print('File is empty, returning default value');
         return defaultValue;
       }
 
       final data = yaml.loadYaml(contents);
-      return data != null && data[key] != null ? data[key] : defaultValue;
+      final result =
+          data != null && data[key] != null ? data[key] : defaultValue;
+      return result;
     } catch (e) {
       print('Error reading data from storage: $e');
       return defaultValue;
     }
   }
 
-  // Remove a specific key from the storage
   Future<void> removeData(String key) async {
     try {
       final file = File(await _localFile);
-
       if (!await file.exists()) {
+        print('Cannot remove key $key - file does not exist');
         return;
       }
 
       final contents = await file.readAsString();
       Map<String, dynamic> existingData = {};
-
       if (contents.isNotEmpty) {
         existingData = Map<String, dynamic>.from(yaml.loadYaml(contents) ?? {});
       }
 
-      // Remove the specified key
       existingData.remove(key);
 
-      // Write updated data back to file
       final yamlWriter = YamlWriter();
       await file.writeAsString(yamlWriter.write(existingData));
     } catch (e) {
@@ -107,17 +101,38 @@ class StorageManager {
     }
   }
 
-  // Clear entire storage
   Future<void> clearStorage() async {
     try {
       final file = File(await _localFile);
-
       if (await file.exists()) {
         await file.delete();
+        print('Storage cleared - file deleted');
       }
     } catch (e) {
       print('Error clearing storage: $e');
       rethrow;
+    }
+  }
+
+  Future<void> dumpStorageContents() async {
+    try {
+      final file = File(await _localFile);
+      if (!await file.exists()) {
+        print('Storage file does not exist');
+        return;
+      }
+
+      final contents = await file.readAsString();
+      if (contents.isEmpty) {
+        print('Storage file is empty');
+        return;
+      }
+
+      print('==== CONFIG CONTENTS ====');
+      print(contents);
+      print('==== END OF CONFIG CONTENTS ====');
+    } catch (e) {
+      print('Error dumping storage contents: $e');
     }
   }
 }

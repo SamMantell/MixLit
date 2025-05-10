@@ -3,8 +3,8 @@ import 'package:win32audio/win32audio.dart';
 
 class VolumeController {
   final ApplicationManager applicationManager;
-  final List<String> sliderTags;
-  final List<ProcessVolume?> assignedApps;
+  List<String> sliderTags;
+  List<ProcessVolume?> assignedApps;
 
   static const double muteVolume = 0.0001;
 
@@ -13,6 +13,14 @@ class VolumeController {
     required this.sliderTags,
     required this.assignedApps,
   });
+
+  void updateSliderTags(List<String> newTags) {
+    sliderTags = newTags;
+  }
+
+  void updateAssignedApps(List<ProcessVolume?> newApps) {
+    assignedApps = newApps;
+  }
 
   void adjustVolume(int sliderId, double value,
       {bool bypassRateLimit = false}) {

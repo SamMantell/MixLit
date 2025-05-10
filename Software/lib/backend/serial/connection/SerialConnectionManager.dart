@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_libserialport/flutter_libserialport.dart'
     show SerialPort, SerialPortConfig, SerialPortParity;
+import 'package:mixlit/backend/application/ConfigManager.dart';
 import 'package:mixlit/backend/serial/SerialPortReader.dart'
     show SerialPortReader;
 
@@ -12,8 +13,7 @@ class SerialConnectionManager {
   static const String DEVICE_IDENTIFIER = "mixlit";
   static Uint8List DEVICE_IDENTIFICATION_REQUEST =
       Uint8List.fromList('?\n'.codeUnits);
-  static const int DEVICE_IDENTIFICATION_RESPONSE_TIMEOUT =
-      200; //200 was working
+  static const int DEVICE_IDENTIFICATION_RESPONSE_TIMEOUT = 200;
 
   SerialPort? _port;
   SerialPortReader? _reader;
@@ -31,7 +31,8 @@ class SerialConnectionManager {
   final void Function(List<int>) onDataReceived;
   final void Function(dynamic) onError;
 
-  // Port configuration
+  final ConfigManager _configManager = ConfigManager.instance;
+
   final _portConfig = SerialPortConfig()
     ..baudRate = BAUD_RATE
     ..bits = 8
@@ -43,18 +44,22 @@ class SerialConnectionManager {
     ..dsr = 0
     ..dtr = 1;
 
+  Completer<void> _initCompleter = Completer<void>();
+  Future<void> get initialized => _initCompleter.future;
+
   SerialConnectionManager({
     required StreamController<bool> connectionStateController,
     required this.onDataReceived,
     required this.onError,
   }) : _connectionStateController = connectionStateController {
-    _initializeConnection();
+    Future.delayed(Duration(milliseconds: 100), () {
+      _initializeConnection();
+    });
   }
 
   void _startConnectionHealthCheck() {
     _connectionHealthCheckTimer?.cancel();
 
-    // timer for checking connection status
     _connectionHealthCheckTimer = Timer.periodic(
         const Duration(seconds: 1), (_) => _checkConnectionHealth());
   }
@@ -66,8 +71,6 @@ class SerialConnectionManager {
     }
 
     try {
-      // Perform a simple health check
-      // This could be a device-specific verification method
       final healthCheckSuccessful = await _performDeviceHealthCheck();
 
       if (!healthCheckSuccessful) {
@@ -79,7 +82,6 @@ class SerialConnectionManager {
           await _handleDisconnection();
         }
       } else {
-        // Reset failure counter on successful health check
         _connectionHealthCheckFailures = 0;
       }
     } catch (e) {
@@ -96,15 +98,11 @@ class SerialConnectionManager {
     if (_port == null || !_port!.isOpen) return false;
 
     try {
-      // Send a verification request
       _port!.write(DEVICE_IDENTIFICATION_REQUEST);
       _port!.flush();
 
-      // Wait for a short time to allow for a response
       await Future.delayed(const Duration(milliseconds: 200));
 
-      // You might want to add more specific verification logic here
-      // For example, check if the port is still responsive or if a specific response is received
       return _port!.isOpen;
     } catch (e) {
       print('Device health check failed: $e');
@@ -120,13 +118,43 @@ class SerialConnectionManager {
     _isInitializing = true;
 
     try {
+      print('Starting serial port initialization...');
+
+      _lastKnownPort = await _configManager.getLastComPort();
+      print('Retrieved last known port from config: $_lastKnownPort');
+
       if (_lastKnownPort != null) {
         try {
+          print('Attempting to connect to last known port: $_lastKnownPort');
           final port = SerialPort(_lastKnownPort!);
-          if (await _verifyDevice(port)) {
-            await _establishConnection(port);
-            _isInitializing = false;
-            return;
+
+          if (!port.openReadWrite()) {
+            print('Failed to open $_lastKnownPort for read/write');
+            _lastKnownPort = null;
+          } else {
+            try {
+              port.config = _portConfig;
+              await Future.delayed(const Duration(milliseconds: 100));
+              port.flush();
+            } catch (e) {
+              print('Error configuring port: $e');
+              _lastKnownPort = null;
+              if (port.isOpen) port.close();
+            }
+
+            if (_lastKnownPort != null) {
+              if (await _verifyDevice(port)) {
+                print('Device verified on port: $_lastKnownPort');
+                await _establishConnection(port);
+                _isInitializing = false;
+                if (!_initCompleter.isCompleted) _initCompleter.complete();
+                return;
+              } else {
+                print('Device verification failed on port: $_lastKnownPort');
+                if (port.isOpen) port.close();
+                _lastKnownPort = null;
+              }
+            }
           }
         } catch (e) {
           print('Failed to reconnect to last known port: $e');
@@ -140,6 +168,7 @@ class SerialConnectionManager {
       _startReconnectionTimer();
     } finally {
       _isInitializing = false;
+      if (!_initCompleter.isCompleted) _initCompleter.complete();
     }
   }
 
@@ -163,8 +192,12 @@ class SerialConnectionManager {
 
         if (result != null) {
           _lastKnownPort = portName;
+          print('Found device on port: $_lastKnownPort');
+
+          await _configManager.saveLastComPort(portName);
+
           await _establishConnection(result);
-          return; // Exit after successful connection
+          return;
         }
       }
 
@@ -185,6 +218,7 @@ class SerialConnectionManager {
     StreamSubscription? subscription;
 
     try {
+      print('Verifying device on port ${port.name}...');
       port.flush();
       await Future.delayed(const Duration(milliseconds: 50));
 
@@ -194,8 +228,10 @@ class SerialConnectionManager {
         (data) {
           try {
             final response = String.fromCharCodes(data).trim();
+            print('Received verification response: "$response"');
             if (response.contains(DEVICE_IDENTIFIER) &&
                 !completer.isCompleted) {
+              print('Device identified as a MixLit - yippee!');
               completer.complete(true);
             }
           } catch (e) {
@@ -209,18 +245,23 @@ class SerialConnectionManager {
         cancelOnError: false,
       );
 
-      // Send multiple verification attempts
       for (var i = 0; i < 3 && !completer.isCompleted; i++) {
+        print('Sending verification request attempt ${i + 1}...');
         port.write(Uint8List.fromList('?\n'.codeUnits));
         port.flush();
         await Future.delayed(const Duration(milliseconds: 200));
       }
 
       timeoutTimer = Timer(const Duration(milliseconds: 2000), () {
-        if (!completer.isCompleted) completer.complete(false);
+        if (!completer.isCompleted) {
+          print('Verification timed out');
+          completer.complete(false);
+        }
       });
 
-      return await completer.future;
+      final result = await completer.future;
+      print('Verification result: ${result ? "success" : "failed"}');
+      return result;
     } catch (e) {
       print('Exception during verification: $e');
       return false;
@@ -263,7 +304,6 @@ class SerialConnectionManager {
     final wasConnected = _isConnected;
     _isConnected = false;
     _isInitializing = false;
-    _lastKnownPort = null;
 
     try {
       await _readerSubscription?.cancel();
@@ -293,10 +333,13 @@ class SerialConnectionManager {
   }
 
   Future<void> dispose() async {
+    print('Disposing SerialConnectionManager...');
     _reconnectTimer?.cancel();
+    _connectionHealthCheckTimer?.cancel();
     await _handleDisconnection();
     await _readerSubscription?.cancel();
     await _reader?.dispose();
+    print('SerialConnectionManager disposal complete');
   }
 
   Future<void> _cleanupExistingConnection() async {
@@ -379,10 +422,31 @@ class SerialConnectionManager {
       _startConnectionHealthCheck();
 
       await _setupPortReader();
-      print('Connection established successfully');
+      print('Connection established successfully on port: ${_lastKnownPort}');
+
+      if (_lastKnownPort != null) {
+        await _configManager.saveLastComPort(_lastKnownPort!);
+      }
     } catch (e) {
       print('Error establishing connection: $e');
       await _handleDisconnection();
+    }
+  }
+
+  Future<bool> writeToPort(List<int> data) async {
+    if (!isConnected || _port == null || !_port!.isOpen) {
+      print('Cannot write to port: Not connected');
+      return false;
+    }
+
+    try {
+      _port!.write(Uint8List.fromList(data));
+      _port!.flush();
+      return true;
+    } catch (e) {
+      print('Error writing to port: $e');
+      _handleDisconnection();
+      return false;
     }
   }
 }
