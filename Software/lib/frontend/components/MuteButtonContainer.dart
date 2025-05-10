@@ -3,55 +3,51 @@ import 'package:mixlit/frontend/components/MuteButton.dart';
 
 class MuteButtonContainer extends StatelessWidget {
   final double containerWidth;
-  final double containerHeight;
-  final List<bool> mutedStates;
-  final List<bool> pressedStates;
+  final List<bool> muteStates;
+  final List<Animation<double>> buttonAnimations;
   final List<String> sliderTags;
-  final Function(int, bool) onToggleMute;
+  final Function(int) onTapDown;
+  final Function(int) onTapUp;
+  final Function(int) onTapCancel;
 
   const MuteButtonContainer({
     Key? key,
     required this.containerWidth,
-    required this.containerHeight,
-    required this.mutedStates,
-    required this.pressedStates,
+    required this.muteStates,
+    required this.buttonAnimations,
     required this.sliderTags,
-    required this.onToggleMute,
+    required this.onTapDown,
+    required this.onTapUp,
+    required this.onTapCancel,
   }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    // Define button colors based on slider tags
-    final List<Color> buttonColors = sliderTags.map((tag) {
-      if (tag == 'defaultDevice') {
-        return Colors.blue;
-      } else if (tag == 'app') {
-        return Colors.green;
-      } else {
-        return Colors.white;
-      }
-    }).toList();
-
     return Container(
       width: containerWidth,
-      height: containerHeight * 0.25, // Adjust height as needed
+      height: 60,
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.5),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: Colors.white.withOpacity(0.2),
-          width: 1.5,
-        ),
+        color: Colors.black.withOpacity(0.55),
+        borderRadius: BorderRadius.circular(15),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.3),
+            spreadRadius: 2,
+            blurRadius: 5,
+            offset: const Offset(0, 3),
+          ),
+        ],
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: List.generate(
-          mutedStates.length,
+          muteStates.length,
           (index) => MuteButton(
-            isMuted: mutedStates[index],
-            isPressed: pressedStates[index],
-            onToggle: (value) => onToggleMute(index, value),
-            color: buttonColors[index],
+            isMuted: muteStates[index],
+            animation: buttonAnimations[index],
+            onTapDown: () => onTapDown(index),
+            onTapUp: () => onTapUp(index),
+            onTapCancel: () => onTapCancel(index),
           ),
         ),
       ),
