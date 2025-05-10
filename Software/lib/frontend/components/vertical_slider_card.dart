@@ -68,8 +68,7 @@ class VerticalSliderCard extends StatelessWidget {
               children: [
                 // App icon (clickable if assigned)
                 CustomTooltip(
-                  message:
-                      isActive ? 'Click to reassign' : 'Click to assign app',
+                  message: isActive ? 'Change' : 'Assign Application',
                   child: GestureDetector(
                     onTap:
                         onTap, // Always allow icon to be clicked for reassignment
@@ -127,10 +126,11 @@ class VerticalSliderCard extends StatelessWidget {
                   child: Text(
                     title,
                     style: TextStyle(
+                      fontFamily: 'BitstreamVeraSans',
                       color: textColor,
                       fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      height: 1.2,
+                      fontWeight: FontWeight.w200,
+                      height: 1,
                       decoration:
                           isActive ? TextDecoration.none : TextDecoration.none,
                       decorationColor: textColor,
@@ -146,6 +146,7 @@ class VerticalSliderCard extends StatelessWidget {
                 Text(
                   isMuted ? 'MUTED' : '$percentage',
                   style: TextStyle(
+                    fontFamily: 'BitstreamVeraSans',
                     color: isMuted ? mutedTextColor : textColor,
                     fontSize: 12,
                     fontWeight: isMuted ? FontWeight.bold : FontWeight.normal,
@@ -220,8 +221,9 @@ class VerticalSliderCard extends StatelessWidget {
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          "Tap to\nAssign",
+                          "Assign",
                           style: TextStyle(
+                            fontFamily: 'BitstreamVeraSans',
                             color: accentColor.withOpacity(0.7),
                             fontSize: 12,
                             fontWeight: FontWeight.w500,

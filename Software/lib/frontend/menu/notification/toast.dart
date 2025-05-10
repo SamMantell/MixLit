@@ -126,6 +126,7 @@ class _ToastState extends State<Toast> with SingleTickerProviderStateMixin {
                       child: Text(
                         widget.message,
                         style: const TextStyle(
+                          fontFamily: 'BitstreamVeraSans',
                           color: Colors.white,
                           fontSize: 14,
                           decoration: TextDecoration.none,

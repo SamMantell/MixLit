@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 
 class FailedToConnectToDeviceDialog extends StatelessWidget {
   final String message;
-
   const FailedToConnectToDeviceDialog({super.key, required this.message});
 
   @override
@@ -33,6 +32,7 @@ class FailedToConnectToDeviceDialog extends StatelessWidget {
               const Text(
                 'Warning',
                 style: TextStyle(
+                  fontFamily: 'BitstreamVeraSans',
                   color: Colors.white,
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
@@ -43,6 +43,7 @@ class FailedToConnectToDeviceDialog extends StatelessWidget {
               Text(
                 message,
                 style: const TextStyle(
+                  fontFamily: 'BitstreamVeraSans',
                   color: Colors.white,
                   fontSize: 16,
                 ),
@@ -53,12 +54,14 @@ class FailedToConnectToDeviceDialog extends StatelessWidget {
               TextButton(
                 onPressed: () => Navigator.of(context).pop(),
                 style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
                   backgroundColor: Colors.white.withOpacity(0.1),
                 ),
                 child: const Text(
                   'alrighty',
                   style: TextStyle(
+                    fontFamily: 'BitstreamVeraSans',
                     color: Colors.white,
                     fontSize: 16,
                     fontWeight: FontWeight.bold,

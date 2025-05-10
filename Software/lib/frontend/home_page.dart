@@ -1,8 +1,12 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:mixlit/backend/application/LEDController.dart';
+import 'package:mixlit/backend/application/Updater.dart';
+import 'package:mixlit/frontend/components/icon_colour_extractor.dart';
 import 'package:mixlit/frontend/menu/slider_assignment.dart';
 import 'package:mixlit/backend/serial/SerialWorker.dart';
 import 'package:mixlit/backend/application/ApplicationManager.dart';
+import 'package:mixlit/backend/application/ConfigManager.dart';
 import 'package:win32audio/win32audio.dart';
 import 'package:mixlit/frontend/controllers/mute_button_controller.dart';
 import 'package:mixlit/frontend/controllers/volume_controller.dart';
@@ -30,13 +34,25 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   final List<double> _sliderValues = List.filled(5, 0.5);
   List<ProcessVolume?> _assignedApps = List.filled(5, null);
   final Map<String, Uint8List?> _appIcons = {};
-  final List<String> _sliderTags = List.filled(5, 'unassigned');
+  List<String> _sliderTags = List.filled(5, 'unassigned');
+  bool _configLoaded = false;
+
+  // Colouring
+  Map<int, Color> _sliderColors = {};
+
+  final Color _defaultAppColor = const Color.fromARGB(255, 188, 184, 147);
+  final Color _deviceVolumeColor = const Color.fromARGB(255, 188, 184, 147);
+  final Color _masterVolumeColor = const Color.fromARGB(255, 188, 184, 147);
+  final Color _activeAppColor = const Color.fromARGB(255, 69, 205, 255);
+  final Color _unassignedColor = const Color.fromARGB(255, 51, 51, 51);
+
+  late final LEDController _ledController;
+  bool _useAnimatedLEDs = false;
 
   @override
   void initState() {
     super.initState();
 
-    // Initialize controllers
     _muteButtonController = MuteButtonController(
       buttonCount: 5,
       vsync: this,
@@ -44,38 +60,122 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
       onSliderValueUpdated: _updateSliderValue,
     );
 
-    _volumeController = VolumeController(
-      applicationManager: _applicationManager,
-      sliderTags: _sliderTags,
-      assignedApps: _assignedApps,
-    );
+    _initializeConfiguration().then((_) {
+      _volumeController = VolumeController(
+        applicationManager: _applicationManager,
+        sliderTags: _sliderTags,
+        assignedApps: _assignedApps,
+      );
 
-    _connectionHandler = ConnectionHandler();
+      _connectionHandler = ConnectionHandler();
 
-    _deviceEventHandler = DeviceEventHandler(
-      worker: _worker,
-      onSliderDataReceived: _handleSliderData,
-      onButtonEvent: _handleButtonEvent,
-      onConnectionStateChanged: _handleConnectionStateChanged,
-    );
+      _deviceEventHandler = DeviceEventHandler(
+        worker: _worker,
+        onSliderDataReceived: _handleSliderData,
+        onButtonEvent: _handleButtonEvent,
+        onConnectionStateChanged: _handleConnectionStateChanged,
+      );
 
-    // Initialize device connection
-    _connectionHandler.initializeDeviceConnection(
-        context, _worker.connectionState.first);
+      _ledController = LEDController(
+        serialWorker: _worker,
+        applicationManager: _applicationManager,
+        sliderValues: _sliderValues,
+        sliderTags: _sliderTags,
+        appIcons: _appIcons,
+        isAnimated: _useAnimatedLEDs,
+      );
 
-    // Set up event handlers
-    _deviceEventHandler.initialize();
+      _connectionHandler!
+          .initializeDeviceConnection(context, _worker.connectionState.first);
+
+      _deviceEventHandler!.initialize();
+
+      setState(() {
+        _configLoaded = true;
+      });
+
+      _ledController.updateAllLEDs();
+
+      _checkForUpdates();
+    });
+  }
+
+  Future<void> _loadIconsForAssignedApps() async {
+    for (int i = 0; i < _assignedApps.length; i++) {
+      final app = _assignedApps[i];
+      final sliderTag = _sliderTags[i];
+
+      if (sliderTag == ConfigManager.TAG_DEFAULT_DEVICE) {
+        _sliderColors[i] = _deviceVolumeColor;
+      } else if (sliderTag == ConfigManager.TAG_MASTER_VOLUME) {
+        _sliderColors[i] = _masterVolumeColor;
+      } else if (sliderTag == ConfigManager.TAG_ACTIVE_APP) {
+        _sliderColors[i] = _activeAppColor;
+      } else if (sliderTag == ConfigManager.TAG_UNASSIGNED) {
+        _sliderColors[i] = _unassignedColor;
+      } else if (sliderTag == ConfigManager.TAG_APP && app != null) {
+        if (!_appIcons.containsKey(app.processPath)) {
+          _appIcons[app.processPath] = await nativeIconToBytes(app.processPath);
+        }
+
+        if (_appIcons[app.processPath] != null) {
+          _sliderColors[i] = await IconColorExtractor.extractDominantColor(
+              _appIcons[app.processPath]!, app.processPath,
+              defaultColor: _defaultAppColor);
+        } else {
+          _sliderColors[i] = _defaultAppColor;
+        }
+      } else {
+        _sliderColors[i] = _defaultAppColor;
+      }
+    }
+  }
+
+  Future<void> _initializeConfiguration() async {
+    await _applicationManager.configLoaded;
+
+    setState(() {
+      for (int i = 0;
+          i < _sliderValues.length &&
+              i < _applicationManager.sliderValues.length;
+          i++) {
+        _sliderValues[i] = _applicationManager.sliderValues[i];
+      }
+
+      _sliderTags =
+          List.from(_applicationManager.sliderTags.take(_sliderTags.length));
+
+      for (int i = 0;
+          i < _muteButtonController!.muteStates.length &&
+              i < _applicationManager.muteStates.length;
+          i++) {
+        _muteButtonController!.muteStates[i] =
+            _applicationManager.muteStates[i];
+      }
+
+      for (int i = 0; i < _sliderTags.length; i++) {
+        if (_sliderTags[i] == ConfigManager.TAG_APP) {
+          _assignedApps[i] = _applicationManager.assignedApplications[i];
+        } else {
+          _assignedApps[i] = null;
+        }
+      }
+    });
+
+    await _loadIconsForAssignedApps();
   }
 
   void _handleSliderData(Map<int, int> data) {
+    if (!_configLoaded || _volumeController == null) return;
+
     setState(() {
       data.forEach((sliderId, sliderValue) {
         if (sliderId >= 0 && sliderId < _sliderValues.length) {
-          // Only update slider if it's not muted
           if (!_muteButtonController.muteStates[sliderId]) {
-            // Always use rate-limited approach for hardware slider movements
             _sliderValues[sliderId] = sliderValue.toDouble();
             _volumeController.adjustVolume(sliderId, sliderValue.toDouble());
+
+            _ledController.updateSliderValue(sliderId, sliderValue.toDouble());
           }
         }
       });
@@ -83,24 +183,21 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   }
 
   void _handleButtonEvent(int buttonIndex, bool isPressed, bool isReleased) {
+    if (!_configLoaded) return;
+
     if (isPressed) {
-      // First update the UI immediately
       if (_muteButtonController.muteStates[buttonIndex]) {
-        // If currently muted, update to previous value immediately
         _sliderValues[buttonIndex] =
             _muteButtonController.previousVolumeValues[buttonIndex];
       } else {
-        // If currently unmuted, update to mute value immediately
         _sliderValues[buttonIndex] = MuteButtonController.muteVolume;
       }
-      // Force a rapid refresh without going through setState
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           setState(() {});
         }
       });
 
-      // Then handle the actual button press logic
       _muteButtonController.handleButtonDown(buttonIndex);
       setState(() {});
       _muteButtonController.checkLongPress(buttonIndex);
@@ -113,40 +210,38 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   void _handleConnectionStateChanged(bool connected) {
     if (mounted) {
       _connectionHandler.showConnectionNotification(context, connected);
+
+      if (connected && _configLoaded) {
+        _initializeConfiguration();
+      }
     }
   }
 
   void _handleVolumeAdjustment(int sliderId, double value) {
-    // Store the current value in the slider values array
     setState(() {
       _sliderValues[sliderId] = value;
     });
 
-    // Always bypass rate limiting for mute/unmute operations
     final bool bypassRateLimit = value <= MuteButtonController.muteVolume ||
         _muteButtonController.muteStates[sliderId];
 
-    // Use the volume controller with appropriate bypass flag
     _volumeController.adjustVolume(sliderId, value,
         bypassRateLimit: bypassRateLimit);
+
+    _ledController.updateSliderValue(sliderId, value);
   }
 
   void _handleDirectVolumeAdjustment(int sliderId, double value) {
-    // Directly update UI state first for immediate feedback
     setState(() {
       _sliderValues[sliderId] = value;
     });
 
-    // Then make the actual adjustment
     _volumeController.directVolumeAdjustment(sliderId, value);
   }
 
-  // Direct UI update for slider values without going through the volume adjustment path
   void _updateSliderValue(int sliderId, double value) {
-    // First update the internal value for immediate UI refresh
     _sliderValues[sliderId] = value;
 
-    // Then force a state update with minimal rebuild scope
     if (mounted) {
       setState(() {});
     }
@@ -161,11 +256,19 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   void dispose() {
     _worker.dispose();
     _muteButtonController.dispose();
-    _deviceEventHandler.dispose();
+    if (_configLoaded) {
+      _ledController.dispose();
+      _deviceEventHandler.dispose();
+    }
     super.dispose();
   }
 
   Future<void> _selectApp(int index) async {
+    if (_volumeController == null) return;
+
+    final previousAssignedApp = _assignedApps[index];
+    final previousTag = _sliderTags[index];
+
     _assignedApps = await assignApplication(
       context,
       index,
@@ -175,19 +278,98 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
       _sliderValues,
       _sliderTags,
     );
-    if (_assignedApps[index] != null) {
-      _sliderTags[index] = 'app';
+
+    if (previousAssignedApp != _assignedApps[index] ||
+        previousTag != _sliderTags[index]) {
+      await _updateSliderColor(index);
+
+      _ledController.updateSliderLEDs(index);
     }
-    setState(() {});
+
+    setState(() {
+      _volumeController!.updateSliderTags(_sliderTags);
+      _volumeController!.updateAssignedApps(_assignedApps);
+
+      _ledController.updateSliderTags(_sliderTags);
+    });
+  }
+
+  //TODO: add toggle lights button in settings menu at some later stage
+  void _toggleLEDAnimation() {
+    setState(() {
+      _useAnimatedLEDs = !_useAnimatedLEDs;
+      _ledController.setAnimated(_useAnimatedLEDs);
+    });
+  }
+
+  Future<void> _updateSliderColor(int index) async {
+    final app = _assignedApps[index];
+    final sliderTag = _sliderTags[index];
+
+    if (sliderTag == ConfigManager.TAG_DEFAULT_DEVICE) {
+      _sliderColors[index] = _deviceVolumeColor;
+    } else if (sliderTag == ConfigManager.TAG_MASTER_VOLUME) {
+      _sliderColors[index] = _masterVolumeColor;
+    } else if (sliderTag == ConfigManager.TAG_ACTIVE_APP) {
+      _sliderColors[index] = _activeAppColor;
+    } else if (sliderTag == ConfigManager.TAG_UNASSIGNED) {
+      _sliderColors[index] = _unassignedColor;
+    } else if (sliderTag == ConfigManager.TAG_APP && app != null) {
+      if (!_appIcons.containsKey(app.processPath) ||
+          _appIcons[app.processPath] == null) {
+        _appIcons[app.processPath] = await nativeIconToBytes(app.processPath);
+      }
+
+      if (_appIcons[app.processPath] != null) {
+        _sliderColors[index] = await IconColorExtractor.extractDominantColor(
+            _appIcons[app.processPath]!, app.processPath,
+            defaultColor: _defaultAppColor);
+      } else {
+        _sliderColors[index] = _defaultAppColor;
+      }
+    } else {
+      _sliderColors[index] = _defaultAppColor;
+    }
+
+    _ledController.updateSliderLEDs(index);
+  }
+
+  Future<void> _checkForUpdates() async {
+    await Future.delayed(const Duration(seconds: 2));
+    if (!mounted) return;
+    await Updater().checkAndShowUpdateDialog(context);
   }
 
   @override
   Widget build(BuildContext context) {
     final bool isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    // loading
+    if (!_configLoaded) {
+      return Scaffold(
+        backgroundColor:
+            isDarkMode ? const Color(0xFF1E1E1E) : const Color(0xFFF5F5F5),
+        body: const Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 20),
+              Text(
+                'Loading configuration...',
+                style: TextStyle(
+                  fontFamily: 'BitstreamVeraSans',
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
 
     return Scaffold(
-      backgroundColor:
-          isDarkMode ? const Color(0xFF1E1E1E) : const Color(0xFFF5F5F5),
+      backgroundColor: isDarkMode
+          ? const Color(0xFF1E1E1E)
+          : const Color.fromARGB(255, 214, 214, 214),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(16.0),
@@ -202,19 +384,20 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                     children: [
                       Image.asset(
                         'lib/frontend/assets/images/logo/mixlit_full.png',
-                        height: 40,
+                        height: 60,
                         fit: BoxFit.contain,
                       ),
-                      const SizedBox(width: 16),
+                      const SizedBox(width: 8),
                       Text(
                         'Volume Mixer Thingy Majig 9000',
                         style: TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 1.2,
+                          fontFamily: 'BitstreamVeraSans',
+                          fontSize: 22,
+                          fontWeight: FontWeight.w100,
+                          letterSpacing: 1,
                           color: isDarkMode
                               ? Colors.white
-                              : const Color(0xFF333333),
+                              : const Color.fromARGB(255, 92, 92, 92),
                         ),
                       ),
                     ],
@@ -253,6 +436,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                               ? 'MixLit Connected'
                               : 'MixLit Disconnected',
                           style: TextStyle(
+                            fontFamily: 'BitstreamVeraSans',
                             color: _connectionHandler.isCurrentlyConnected
                                 ? Colors.green
                                 : Colors.red,
@@ -282,13 +466,25 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                     Widget? iconWidget;
                     String title;
                     Color primaryColor;
+                    final String sliderTag = _sliderTags[index];
 
-                    if (_sliderTags[index] == 'defaultDevice') {
+                    if (sliderTag == ConfigManager.TAG_DEFAULT_DEVICE) {
                       iconWidget = const Icon(Icons.speaker,
                           color: Colors.white, size: 32);
-                      title = 'Device\nVolume';
+                      title = 'Device';
                       primaryColor = Colors.blue;
-                    } else if (_assignedApps[index] != null) {
+                    } else if (sliderTag == ConfigManager.TAG_MASTER_VOLUME) {
+                      iconWidget = const Icon(Icons.volume_up,
+                          color: Colors.white, size: 32);
+                      title = 'Master\nVolume';
+                      primaryColor = Colors.green;
+                    } else if (sliderTag == ConfigManager.TAG_ACTIVE_APP) {
+                      iconWidget = const Icon(Icons.app_registration,
+                          color: Colors.white, size: 32);
+                      title = 'Active\nApp';
+                      primaryColor = Colors.purple;
+                    } else if (sliderTag == ConfigManager.TAG_APP &&
+                        _assignedApps[index] != null) {
                       final appPath = _assignedApps[index]!.processPath;
                       if (_appIcons.containsKey(appPath) &&
                           _appIcons[appPath] != null) {
@@ -305,18 +501,12 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                       // Capitalize first letter
                       title = title[0].toUpperCase() + title.substring(1);
 
-                      primaryColor = Colors.green;
+                      primaryColor = Colors.amber;
                     } else {
                       iconWidget = const Icon(Icons.add_circle_outline,
                           color: Colors.white, size: 32);
-                      title = 'Assign\nApp';
+                      title = 'N/A';
                       primaryColor = Colors.grey;
-                    }
-
-                    // Make master volume card special
-                    if (index == 0) {
-                      title = 'Master\nVolume';
-                      primaryColor = Colors.white;
                     }
 
                     return VerticalSliderCard(
@@ -325,9 +515,12 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                       value:
                           _sliderValues[index] / 1024, // Normalize to 0.0-1.0
                       isMuted: isMuted,
-                      isActive: _sliderTags[index] != 'unassigned',
+                      isActive: sliderTag != ConfigManager.TAG_UNASSIGNED,
                       percentage: volumePercentage,
-                      accentColor: primaryColor,
+                      accentColor: _sliderColors[index] ??
+                          (sliderTag == ConfigManager.TAG_APP
+                              ? _defaultAppColor
+                              : _unassignedColor),
                       onSliderChanged: (value) {
                         final scaledValue =
                             value * 1024; // Scale back to original range

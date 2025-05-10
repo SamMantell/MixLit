@@ -2,6 +2,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'painting/muted_red_line.dart';
 import 'package:mixlit/frontend/components/custom_slider.dart';
+import 'package:mixlit/backend/application/ConfigManager.dart';
 
 class SliderContainer extends StatelessWidget {
   final double containerWidth;
@@ -9,7 +10,8 @@ class SliderContainer extends StatelessWidget {
   final List<double> sliderValues;
   final List<dynamic> assignedApps; // Accept dynamic for flexibility
   final Map<String, Uint8List?> appIcons;
-  final List<String> sliderTags;
+  final List<String>
+      sliderTags; // New list to track the tag of each slider (app or default device)
   final Function(int sliderIndex, double value) onSliderChange;
   final Future<void> Function(int sliderIndex) onAssignApp;
   final Function(int sliderIndex, bool isDefault) onSelectDefaultDevice;
@@ -45,10 +47,19 @@ class SliderContainer extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: List.generate(sliderValues.length, (index) {
-              final appName = assignedApps[index] != null
-                  ? _formatAppName(
-                      assignedApps[index]!.processPath.split(r'\').last)
-                  : 'Unassigned';
+              final String sliderTag = sliderTags[index];
+              String sliderLabel = 'Unassigned';
+
+              if (sliderTag == ConfigManager.TAG_APP &&
+                  assignedApps[index] != null) {
+                sliderLabel = _formatAppName(
+                    assignedApps[index]!.processPath.split(r'\').last);
+              } else if (sliderTag == ConfigManager.TAG_DEFAULT_DEVICE ||
+                  sliderTag == ConfigManager.TAG_MASTER_VOLUME) {
+                sliderLabel = 'Master Volume';
+              } else if (sliderTag == ConfigManager.TAG_ACTIVE_APP) {
+                sliderLabel = 'Active App';
+              }
 
               final bool isMuted = muteStates != null
                   ? muteStates![index]
@@ -57,22 +68,30 @@ class SliderContainer extends StatelessWidget {
               final volumePercentage =
                   (sliderValues[index] / 1024 * 100).round();
 
-              // Use default device icon if assigned, otherwise app icon
               Widget iconWidget;
-              if (sliderTags[index] == 'defaultDevice') {
-                // Default device: Use Icons.speaker when it's the default device
+              if (sliderTag == ConfigManager.TAG_DEFAULT_DEVICE ||
+                  sliderTag == ConfigManager.TAG_MASTER_VOLUME) {
                 iconWidget =
-                    const Icon(Icons.speaker, color: Colors.white, size: 64);
-              } else if (assignedApps[index] != null) {
+                    const Icon(Icons.volume_up, color: Colors.white, size: 64);
+              } else if (sliderTag == ConfigManager.TAG_ACTIVE_APP) {
+                iconWidget = const Icon(Icons.app_registration,
+                    color: Colors.white, size: 64);
+              } else if (sliderTag == ConfigManager.TAG_APP &&
+                  assignedApps[index] != null) {
                 final appPath = assignedApps[index]!.processPath;
-                iconWidget = Image.memory(
-                  appIcons[appPath]!,
-                  width: 64,
-                  height: 64,
-                  errorBuilder: (context, error, stackTrace) => const Icon(
-                      Icons.image_not_supported,
-                      color: Colors.white),
-                );
+                if (appIcons.containsKey(appPath) &&
+                    appIcons[appPath] != null) {
+                  iconWidget = Image.memory(
+                    appIcons[appPath]!,
+                    width: 64,
+                    height: 64,
+                    errorBuilder: (context, error, stackTrace) =>
+                        const Icon(Icons.apps, color: Colors.white, size: 64),
+                  );
+                } else {
+                  iconWidget =
+                      const Icon(Icons.apps, color: Colors.white, size: 64);
+                }
               } else {
                 iconWidget =
                     const Icon(Icons.apps, color: Colors.white, size: 64);
@@ -93,7 +112,21 @@ class SliderContainer extends StatelessWidget {
                         ),
                     ],
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: 80,
+                    child: Text(
+                      sliderLabel,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                      ),
+                      textAlign: TextAlign.center,
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
                   // Display label for volume or MUTED
                   Text(
                     isMuted ? "MUTED" : "$volumePercentage%",
@@ -107,16 +140,16 @@ class SliderContainer extends StatelessWidget {
                   const SizedBox(height: 10),
                   // Vertical slider
                   SizedBox(
-                    height: containerHeight *
-                        0.5, // Proportional height for the slider
+                    height: containerHeight * 0.5,
                     child: RotatedBox(
                       quarterTurns: 3,
                       child: CustomSlider(
                         value: sliderValues[index],
                         min: 0,
                         max: 1024,
-                        activeColor: Colors.blueGrey,
-                        inactiveColor: Colors.blueGrey.withOpacity(0.5),
+                        activeColor: _getSliderColor(sliderTag),
+                        inactiveColor:
+                            _getSliderColor(sliderTag).withOpacity(0.5),
                         onChanged: (newValue) =>
                             onSliderChange(index, newValue),
                         isMuted: isMuted,
@@ -143,5 +176,18 @@ class SliderContainer extends StatelessWidget {
   String _formatAppName(String appName) {
     appName = appName.replaceAll('.exe', '');
     return appName[0].toUpperCase() + appName.substring(1);
+  }
+
+  Color _getSliderColor(String sliderTag) {
+    if (sliderTag == ConfigManager.TAG_DEFAULT_DEVICE ||
+        sliderTag == ConfigManager.TAG_MASTER_VOLUME) {
+      return Colors.green;
+    } else if (sliderTag == ConfigManager.TAG_ACTIVE_APP) {
+      return Colors.purple;
+    } else if (sliderTag == ConfigManager.TAG_APP) {
+      return Colors.blue;
+    } else {
+      return Colors.blueGrey;
+    }
   }
 }
