@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:mixlit/backend/application/LEDController.dart';
+import 'package:mixlit/backend/application/Updater.dart';
 import 'package:mixlit/frontend/components/icon_colour_extractor.dart';
 import 'package:mixlit/frontend/menu/slider_assignment.dart';
 import 'package:mixlit/backend/serial/SerialWorker.dart';
@@ -94,6 +95,8 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
       });
 
       _ledController.updateAllLEDs();
+
+      _checkForUpdates();
     });
   }
 
@@ -329,6 +332,12 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     }
 
     _ledController.updateSliderLEDs(index);
+  }
+
+  Future<void> _checkForUpdates() async {
+    await Future.delayed(const Duration(seconds: 2));
+    if (!mounted) return;
+    await Updater().checkAndShowUpdateDialog(context);
   }
 
   @override
