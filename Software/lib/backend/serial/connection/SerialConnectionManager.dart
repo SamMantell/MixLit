@@ -8,8 +8,12 @@ import 'package:mixlit/backend/serial/SerialPortReader.dart'
 
 class SerialConnectionManager {
   static const int BAUD_RATE = 115200;
-  static const int SCAN_TIMEOUT_MS = 6000;
+  static const int SCAN_TIMEOUT_MS = 200;
   static const String DEVICE_IDENTIFIER = "mixlit";
+  static Uint8List DEVICE_IDENTIFICATION_REQUEST =
+      Uint8List.fromList('?\n'.codeUnits);
+  static const int DEVICE_IDENTIFICATION_RESPONSE_TIMEOUT =
+      200; //200 was working
 
   SerialPort? _port;
   SerialPortReader? _reader;
@@ -93,7 +97,7 @@ class SerialConnectionManager {
 
     try {
       // Send a verification request
-      _port!.write(Uint8List.fromList('?\n'.codeUnits));
+      _port!.write(DEVICE_IDENTIFICATION_REQUEST);
       _port!.flush();
 
       // Wait for a short time to allow for a response

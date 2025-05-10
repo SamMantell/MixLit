@@ -4,6 +4,7 @@ import 'package:mixlit/backend/serial/connection/SerialConnectionManager.dart';
 
 class SerialWorker {
   final _sliderDataController = StreamController<Map<int, int>>.broadcast();
+  final _buttonDataController = StreamController<Map<String, int>>.broadcast();
   final _rawDataController = StreamController<String>.broadcast();
   final _connectionStateController = StreamController<bool>.broadcast();
 
@@ -14,6 +15,7 @@ class SerialWorker {
   StreamSubscription? _connectionStateSubscription;
 
   Stream<Map<int, int>> get sliderData => _sliderDataController.stream;
+  Stream<Map<String, int>> get buttonData => _buttonDataController.stream;
   Stream<String> get rawData => _rawDataController.stream;
   Stream<bool> get connectionState => _connectionStateController.stream;
 
@@ -68,6 +70,7 @@ class SerialWorker {
     await _connectionManager.dispose();
     _cleanupDataProcessing();
     await _sliderDataController.close();
+    await _buttonDataController.close();
     await _rawDataController.close();
     await _connectionStateController.close();
   }
@@ -86,6 +89,8 @@ class SerialWorker {
           if (!completer.isCompleted) completer.complete();
         } else if (message is Map<int, int>) {
           _sliderDataController.add(message);
+        } else if (message is Map<String, int>) {
+          _buttonDataController.add(message);
         } else if (message is String) {
           _rawDataController.add(message);
         }
@@ -137,6 +142,25 @@ class SerialWorker {
       final parts = line.split('|');
       if (parts.isEmpty) return;
 
+      if (parts.length > 0 &&
+          parts[0].length == 1 &&
+          parts[0].codeUnitAt(0) >= 'A'.codeUnitAt(0) &&
+          parts[0].codeUnitAt(0) <= 'E'.codeUnitAt(0)) {
+        try {
+          if (parts.length >= 2) {
+            final buttonId = parts[0];
+            final buttonState = int.parse(parts[1].trim());
+
+            final buttonData = <String, int>{};
+            buttonData[buttonId] = buttonState;
+            mainSendPort.send(buttonData);
+          }
+        } catch (e) {
+          print('Error parsing button data: $e');
+        }
+        return;
+      }
+
       final sliderData = <int, int>{};
 
       for (var i = 0; i < parts.length - 1; i += 2) {
@@ -147,7 +171,6 @@ class SerialWorker {
           final sliderValue = int.parse(parts[i + 1].trim());
           sliderData[sliderId] = sliderValue;
         } catch (e) {
-          print('Error parsing slider data: $e');
           continue;
         }
       }
