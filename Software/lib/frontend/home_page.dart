@@ -345,7 +345,12 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
             children: [
               CircularProgressIndicator(),
               SizedBox(height: 20),
-              Text('Loading configuration...'),
+              Text(
+                'Loading configuration...',
+                style: TextStyle(
+                  fontFamily: 'BitstreamVeraSans',
+                ),
+              ),
             ],
           ),
         ),
@@ -370,16 +375,17 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                     children: [
                       Image.asset(
                         'lib/frontend/assets/images/logo/mixlit_full.png',
-                        height: 40,
+                        height: 60,
                         fit: BoxFit.contain,
                       ),
-                      const SizedBox(width: 16),
+                      const SizedBox(width: 8),
                       Text(
                         'Volume Mixer Thingy Majig 9000',
                         style: TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.w800,
-                          letterSpacing: 1.2,
+                          fontFamily: 'BitstreamVeraSans',
+                          fontSize: 22,
+                          fontWeight: FontWeight.w100,
+                          letterSpacing: 1,
                           color: isDarkMode
                               ? Colors.white
                               : const Color.fromARGB(255, 92, 92, 92),
@@ -421,6 +427,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                               ? 'MixLit Connected'
                               : 'MixLit Disconnected',
                           style: TextStyle(
+                            fontFamily: 'BitstreamVeraSans',
                             color: _connectionHandler.isCurrentlyConnected
                                 ? Colors.green
                                 : Colors.red,
@@ -455,7 +462,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                     if (sliderTag == ConfigManager.TAG_DEFAULT_DEVICE) {
                       iconWidget = const Icon(Icons.speaker,
                           color: Colors.white, size: 32);
-                      title = 'Device\nVolume';
+                      title = 'Device';
                       primaryColor = Colors.blue;
                     } else if (sliderTag == ConfigManager.TAG_MASTER_VOLUME) {
                       iconWidget = const Icon(Icons.volume_up,
@@ -489,7 +496,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                     } else {
                       iconWidget = const Icon(Icons.add_circle_outline,
                           color: Colors.white, size: 32);
-                      title = 'Assign\nApp';
+                      title = 'N/A';
                       primaryColor = Colors.grey;
                     }
 

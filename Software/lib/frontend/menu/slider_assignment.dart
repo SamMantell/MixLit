@@ -44,8 +44,22 @@ Future<List<ProcessVolume?>> assignApplication(
                 children: [
                   const TabBar(
                     tabs: [
-                      Tab(text: 'Applications'),
-                      Tab(text: 'System'),
+                      Tab(
+                        child: Text(
+                          'Applications',
+                          style: TextStyle(
+                            fontFamily: 'BitstreamVeraSans',
+                          ),
+                        ),
+                      ),
+                      Tab(
+                        child: Text(
+                          'System',
+                          style: TextStyle(
+                            fontFamily: 'BitstreamVeraSans',
+                          ),
+                        ),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 16),
@@ -92,13 +106,18 @@ Future<List<ProcessVolume?>> assignApplication(
                                   : const Icon(Icons.apps, color: Colors.white),
                               title: Text(
                                 appName,
-                                style: const TextStyle(color: Colors.white),
+                                style: const TextStyle(
+                                  fontFamily: 'BitstreamVeraSans',
+                                  color: Colors.white,
+                                ),
                               ),
                               subtitle: isAlreadyAssigned
                                   ? Text(
                                       'Already assigned to Slider ${assignedSliderIndex! + 1}',
-                                      style:
-                                          TextStyle(color: Colors.orange[200]),
+                                      style: TextStyle(
+                                        fontFamily: 'BitstreamVeraSans',
+                                        color: Colors.orange[200],
+                                      ),
                                     )
                                   : null,
                               onTap: () {
@@ -115,7 +134,10 @@ Future<List<ProcessVolume?>> assignApplication(
                                   color: Colors.white),
                               title: const Text(
                                 'Device Volume',
-                                style: TextStyle(color: Colors.white),
+                                style: TextStyle(
+                                  fontFamily: 'BitstreamVeraSans',
+                                  color: Colors.white,
+                                ),
                               ),
                               onTap: () {
                                 Navigator.pop(context, {'type': 'device'});
@@ -126,7 +148,10 @@ Future<List<ProcessVolume?>> assignApplication(
                                   color: Colors.white),
                               title: const Text(
                                 'Master Volume',
-                                style: TextStyle(color: Colors.white),
+                                style: TextStyle(
+                                  fontFamily: 'BitstreamVeraSans',
+                                  color: Colors.white,
+                                ),
                               ),
                               onTap: () {
                                 Navigator.pop(context, {'type': 'master'});
@@ -137,7 +162,10 @@ Future<List<ProcessVolume?>> assignApplication(
                                   color: Colors.white),
                               title: const Text(
                                 'Active Application Volume',
-                                style: TextStyle(color: Colors.white),
+                                style: TextStyle(
+                                  fontFamily: 'BitstreamVeraSans',
+                                  color: Colors.white,
+                                ),
                               ),
                               onTap: () {
                                 Navigator.pop(context, {'type': 'active'});
@@ -149,7 +177,10 @@ Future<List<ProcessVolume?>> assignApplication(
                                   color: Colors.red),
                               title: const Text(
                                 'Reset Slider',
-                                style: TextStyle(color: Colors.red),
+                                style: TextStyle(
+                                  fontFamily: 'BitstreamVeraSans',
+                                  color: Colors.red,
+                                ),
                               ),
                               onTap: () {
                                 Navigator.pop(context, {'type': 'reset'});

@@ -68,8 +68,19 @@ flutter:
 
   # To add assets to your application, add an assets section, like this:
   assets:
-    - lib/frontend/assets/images/background/background.png
     - lib/frontend/assets/images/logo/mixlit_full.png
+
+  fonts:
+    - family: BitstreamVeraSans
+      fonts:
+        - asset: lib/frontend/assets/fonts/BitstreamVeraSans-Roman.ttf
+        - asset: lib/frontend/assets/fonts/BitstreamVeraSans-Bold.ttf
+          weight: 500
+        - asset: lib/frontend/assets/fonts/BitstreamVeraSans-Oblique.ttf
+          style: italic
+        - asset: lib/frontend/assets/fonts/BitstreamVeraSans-BoldOblique.ttf
+          weight: 500
+          style: italic
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/assets-and-images/#resolution-aware
