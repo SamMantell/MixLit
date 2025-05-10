@@ -9,7 +9,7 @@ class ApplicationManager {
   List<String> sliderTags = List.filled(8, 'defaultDevice');
 
   // Rate limiting due to windows buffering volume requests (for some reason)
-  static const int RATE_LIMIT_MS = 32; //milliseconds
+  static const int RATE_LIMIT_MS = 20; //milliseconds
   DateTime _lastVolumeAdjustment = DateTime.now();
   Timer? _pendingVolumeTimer;
   Map<int, double> _pendingAppVolumes = {};
