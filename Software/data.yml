@@ -1,0 +1,12 @@
+last-com-port: "COM8"
+sliderConfigs:
+  - index: 0
+    processName: null
+    volumeValue: 451.0
+    sliderTag: "defaultDevice"
+    isMuted: false
+  - index: 1
+    processName: "firefox.exe"
+    volumeValue: 512.0
+    sliderTag: "app"
+    isMuted: false

@@ -1,19 +1,21 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:tray_manager/tray_manager.dart';
+import 'package:win32audio/win32audio.dart';
 import 'package:mixlit/backend/application/LEDController.dart';
 import 'package:mixlit/backend/application/Updater.dart';
-import 'package:mixlit/frontend/components/icon_colour_extractor.dart';
-import 'package:mixlit/frontend/menu/slider_assignment.dart';
 import 'package:mixlit/backend/serial/SerialWorker.dart';
 import 'package:mixlit/backend/application/ApplicationManager.dart';
 import 'package:mixlit/backend/application/ConfigManager.dart';
-import 'package:win32audio/win32audio.dart';
 import 'package:mixlit/frontend/controllers/mute_button_controller.dart';
 import 'package:mixlit/frontend/controllers/volume_controller.dart';
 import 'package:mixlit/frontend/controllers/connection_handler.dart';
 import 'package:mixlit/frontend/controllers/device_event_handler.dart';
 import 'package:mixlit/frontend/components/vertical_slider_card.dart';
 import 'package:mixlit/frontend/components/application_icon.dart';
+import 'package:mixlit/frontend/components/icon_colour_extractor.dart';
+import 'package:mixlit/frontend/menu/slider_assignment.dart';
+import 'package:window_manager/window_manager.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -22,7 +24,8 @@ class HomePage extends StatefulWidget {
   _HomePageState createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
+class _HomePageState extends State<HomePage>
+    with TickerProviderStateMixin, WindowListener, TrayListener {
   final SerialWorker _worker = SerialWorker();
   final ApplicationManager _applicationManager = ApplicationManager();
   late final MuteButtonController _muteButtonController;
@@ -52,6 +55,8 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
+    _initTray();
+    windowManager.addListener(this);
 
     _muteButtonController = MuteButtonController(
       buttonCount: 5,
@@ -98,6 +103,38 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
 
       _checkForUpdates();
     });
+  }
+
+  Future<void> _initTray() async {
+    trayManager.addListener(this);
+    await trayManager.setIcon('lib/frontend/assets/images/logo/app_icon.ico');
+    await trayManager.setToolTip("MixLit: Application Volume Control");
+    await trayManager.setContextMenu(Menu(
+      items: [
+        MenuItem(label: "Show Window", onClick: (menuItem) => _showWindow()),
+        MenuItem(label: "Close", onClick: (menuItem) => _exitApp()),
+      ],
+    ));
+  }
+
+  void _showWindow() {
+    windowManager.show();
+    windowManager.focus();
+  }
+
+  void _exitApp() {
+    trayManager.destroy();
+    windowManager.destroy();
+  }
+
+  @override
+  void onTrayIconRightMouseDown() {
+    trayManager.popUpContextMenu();
+  }
+
+  @override
+  void onWindowClose() async {
+    windowManager.hide();
   }
 
   Future<void> _loadIconsForAssignedApps() async {
