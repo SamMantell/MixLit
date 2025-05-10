@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'package:path_provider/path_provider.dart';
 import 'package:yaml/yaml.dart' as yaml;
 import 'package:yaml_writer/yaml_writer.dart';
 
@@ -11,20 +10,12 @@ class StorageManager {
   StorageManager._internal();
 
   Future<String> get _localPath async {
-    final directory = await getApplicationDocumentsDirectory();
-    final mixlitDataDir = Directory('${directory.path}/MixLit/data');
-
-    if (!await mixlitDataDir.exists()) {
-      await mixlitDataDir.create(recursive: true);
-    }
-
-    print('Storage path: ${mixlitDataDir.path}');
-    return mixlitDataDir.path;
+    return Directory.current.path;
   }
 
   Future<String> get _localFile async {
     final path = await _localPath;
-    return '$path/mixlit.yml';
+    return '$path/data.yml';
   }
 
   Future<void> saveData(String key, dynamic data) async {
