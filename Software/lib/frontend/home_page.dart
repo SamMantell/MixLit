@@ -35,6 +35,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   final List<AnimationController> _buttonAnimControllers = [];
   final List<Animation<double>> _buttonAnimations = [];
 
+  // Button press tracking
   final List<DateTime?> _buttonPressStartTimes = [null, null, null, null, null];
   final List<bool> _isLongPressing = [false, false, false, false, false];
   final List<bool> _wasUnmutedBeforeLongPress = [
@@ -45,8 +46,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     false
   ];
   final List<double> _previousVolumeValues = [1.0, 1.0, 1.0, 1.0, 1.0];
-  static const Duration _longPressDuration =
-      Duration(milliseconds: 1000); //2s hold
+  static const Duration _longPressDuration = Duration(milliseconds: 500);
   static const double _muteVolume = 0.0001;
 
   bool _hasShownInitialDialog = false;
@@ -55,14 +55,44 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
 
   // Adjusts the volume for either a device or an app
   void _handleVolumeAdjustment(int sliderId, double value) {
+    _sliderValues[sliderId] = value;
+
+    if (value <= _muteVolume ||
+        (_muteStates[sliderId] && value == _previousVolumeValues[sliderId])) {
+      _directVolumeAdjustment(sliderId, value);
+    } else {
+      if (_sliderTags[sliderId] == 'defaultDevice') {
+        _applicationManager.adjustDeviceVolume(value);
+      } else if (_sliderTags[sliderId] == 'app' &&
+          _assignedApps[sliderId] != null) {
+        final app = _assignedApps[sliderId];
+        if (app != null) {
+          _applicationManager.adjustVolume(sliderId, value);
+        }
+      }
+    }
+  }
+
+  void _directVolumeAdjustment(int sliderId, double value) {
     if (_sliderTags[sliderId] == 'defaultDevice') {
-      _applicationManager.adjustDeviceVolume(value);
+      int volumeLevel = ((value / 1024) * 100).round();
+      Audio.setVolume(volumeLevel / 100, AudioDeviceType.output);
     } else if (_sliderTags[sliderId] == 'app' &&
         _assignedApps[sliderId] != null) {
       final app = _assignedApps[sliderId];
       if (app != null) {
-        _applicationManager.adjustVolume(sliderId, value);
+        double volumeLevel = value / 1024;
+        if (volumeLevel <= 0.009) {
+          volumeLevel = 0.0001;
+        }
+        Audio.setAudioMixerVolume(app.processId, volumeLevel);
       }
+    }
+
+    if (_sliderTags[sliderId] == 'defaultDevice') {
+      _applicationManager.sliderValues[sliderId] = value;
+    } else if (_sliderTags[sliderId] == 'app') {
+      _applicationManager.sliderValues[sliderId] = value;
     }
   }
 
@@ -220,7 +250,14 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
               // Only update slider if it's not muted
               if (!_muteStates[sliderId]) {
                 _sliderValues[sliderId] = sliderValue.toDouble();
-                _handleVolumeAdjustment(sliderId, sliderValue.toDouble());
+                if (_sliderTags[sliderId] == 'defaultDevice') {
+                  _applicationManager
+                      .adjustDeviceVolume(sliderValue.toDouble());
+                } else if (_sliderTags[sliderId] == 'app' &&
+                    _assignedApps[sliderId] != null) {
+                  _applicationManager.adjustVolume(
+                      sliderId, sliderValue.toDouble());
+                }
               }
             }
           });
@@ -247,13 +284,11 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
             print(
                 'Processing button: ${buttonId} (index: $index), state: $state');
 
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (state == 1) {
-                _handleButtonDown(index);
-              } else if (state == 0) {
-                _handleButtonUp(index);
-              }
-            });
+            if (state == 1) {
+              _handleButtonDown(index);
+            } else if (state == 0) {
+              _handleButtonUp(index);
+            }
           }
         });
       },
@@ -347,7 +382,13 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                       onSliderChange: (sliderIndex, value) {
                         setState(() {
                           _sliderValues[sliderIndex] = value;
-                          _handleVolumeAdjustment(sliderIndex, value);
+                          if (_sliderTags[sliderIndex] == 'defaultDevice') {
+                            _applicationManager.adjustDeviceVolume(value);
+                          } else if (_sliderTags[sliderIndex] == 'app' &&
+                              _assignedApps[sliderIndex] != null) {
+                            _applicationManager.adjustVolume(
+                                sliderIndex, value);
+                          }
                         });
                       },
                       onSelectDefaultDevice: (sliderIndex, isDefault) {
