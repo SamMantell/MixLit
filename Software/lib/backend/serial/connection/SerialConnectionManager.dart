@@ -95,7 +95,7 @@ class SerialConnectionManager {
   }
 
   Future<bool> _performDeviceHealthCheck() async {
-    if (_port == null || !_port!.isOpen) return false;
+    if (_port != null || !_port!.isOpen) return false;
 
     try {
       _port!.write(DEVICE_IDENTIFICATION_REQUEST);
@@ -419,7 +419,7 @@ class SerialConnectionManager {
       _reconnectTimer?.cancel();
 
       _connectionHealthCheckFailures = 0;
-      _startConnectionHealthCheck();
+      //_startConnectionHealthCheck();
 
       await _setupPortReader();
       print('Connection established successfully on port: $_lastKnownPort');

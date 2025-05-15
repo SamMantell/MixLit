@@ -125,8 +125,8 @@ void setLEDs(int iCurrentValue, int ledStrip)
 
 // Function to read data from the pc and use it to set the LED Colours on the MixLit
 void readSerialDataAndSetLEDs() {
-  serialDataFromPC = Serial.readString();
-  Serial.println(serialDataFromPC);
+  serialDataFromPC = Serial.readStringUntil("\n");
+  //Serial.println(serialDataFromPC);
 
   serialDataFromPC.toCharArray(tempFullHexStorage, 128);
 
