@@ -57,7 +57,7 @@ CRGB leds[NUM_OF_LED_STRIPS][NUM_OF_LEDS_PER_STRIP];
 
 // LED Strip Variables for Colour Control
 bool isAnimated = false;
-bool softwareLEDControl = true;
+bool softwareLEDControl = false;
 uint8_t ColorIndex;
 int colorIndexOffset;
 
@@ -333,15 +333,13 @@ void loop()
   }
 
   if (Serial.available() > 0) {
-    String command = Serial.peek();
+    String command = Serial.readString();
+    command.trim();
     if (command == "AUTO_LED_OFF") {
-      Serial.read(); 
       softwareLEDControl = true;
     } 
     else if (command == "AUTO_LED_ON") {
-      Serial.read();
       softwareLEDControl = false;
-      Serial.println("Automatic LED control enabled");
     }
     else {
       readSerialDataAndSetLEDs();

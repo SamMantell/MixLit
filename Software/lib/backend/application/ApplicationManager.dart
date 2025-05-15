@@ -172,10 +172,10 @@ class ApplicationManager {
     final app = assignedApplications[sliderIndex];
     if (app != null) {
       _configManager.updateSliderConfig(sliderIndex, app.processPath,
-          sliderValue, sliderTags[sliderIndex], muteStates[sliderIndex]);
-    } else {
-      _configManager.updateSliderConfig(sliderIndex, null, sliderValue,
           sliderTags[sliderIndex], muteStates[sliderIndex]);
+    } else {
+      _configManager.updateSliderConfig(
+          sliderIndex, null, sliderTags[sliderIndex], muteStates[sliderIndex]);
     }
   }
 
@@ -222,7 +222,7 @@ class ApplicationManager {
           muteStates[i] = volumeLevel <= 1;
 
           _configManager.updateSliderConfig(
-              i, null, sliderValues[i], sliderTags[i], muteStates[i]);
+              i, null, sliderTags[i], muteStates[i]);
 
           break;
         }
@@ -239,7 +239,7 @@ class ApplicationManager {
           sliderTags[i] == ConfigManager.TAG_MASTER_VOLUME) {
         sliderValues[i] = sliderValue;
         _configManager.updateSliderConfig(
-            i, null, sliderValue, sliderTags[i], sliderValue <= 0.009);
+            i, null, sliderTags[i], sliderValue <= 0.009);
         break;
       }
     }
@@ -248,8 +248,8 @@ class ApplicationManager {
   void setMuteState(int sliderIndex, bool isMuted) {
     muteStates[sliderIndex] = isMuted;
     ProcessVolume? app = assignedApplications[sliderIndex];
-    _configManager.updateSliderConfig(sliderIndex, app?.processPath,
-        sliderValues[sliderIndex], sliderTags[sliderIndex], isMuted);
+    _configManager.updateSliderConfig(
+        sliderIndex, app?.processPath, sliderTags[sliderIndex], isMuted);
   }
 
   void updateSliderConfig(int sliderIndex, double value, bool isMuted) {
@@ -260,7 +260,7 @@ class ApplicationManager {
     String tag = sliderTags[sliderIndex];
 
     _configManager.updateSliderConfig(
-        sliderIndex, app?.processPath, value, tag, isMuted);
+        sliderIndex, app?.processPath, tag, isMuted);
   }
 
   void resetSliderConfiguration(int sliderIndex) {

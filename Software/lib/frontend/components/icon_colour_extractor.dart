@@ -4,23 +4,26 @@ import 'package:flutter/material.dart';
 
 class IconColorExtractor {
   static final Map<String, Color> _colourCache = {};
+  static const int MAX_CACHE_SIZE = 50;
+  static int _lastCacheClean = 0;
 
   static Future<Color> extractDominantColor(
       Uint8List iconData, String identifier, // Use path as identifier
       {Color defaultColor = Colors.blue}) async {
+    // Check cache first
     if (_colourCache.containsKey(identifier)) {
       return _colourCache[identifier]!;
     }
+    _cleanCacheIfNeeded();
 
     try {
       final codec = await ui.instantiateImageCodec(iconData);
       final frameInfo = await codec.getNextFrame();
       final image = frameInfo.image;
-
       final resizedCodec = await ui.instantiateImageCodec(
         iconData,
-        targetHeight: 50,
-        targetWidth: 50,
+        targetHeight: 32,
+        targetWidth: 32,
       );
       final resizedFrameInfo = await resizedCodec.getNextFrame();
       final resizedImage = resizedFrameInfo.image;
@@ -32,10 +35,10 @@ class IconColorExtractor {
       }
 
       final pixels = byteData.buffer.asUint8List();
-
       final Map<int, int> colourCount = {};
 
-      for (int i = 0; i < pixels.length; i += 4) {
+      for (int i = 0; i < pixels.length; i += 16) {
+        // Increased step from 4 to 16
         final r = pixels[i];
         final g = pixels[i + 1];
         final b = pixels[i + 2];
@@ -69,7 +72,6 @@ class IconColorExtractor {
           .toColor();
 
       _colourCache[identifier] = adjustedColor;
-
       return adjustedColor;
     } catch (e) {
       print('Error extracting colour: $e');
@@ -77,7 +79,22 @@ class IconColorExtractor {
     }
   }
 
+  static void _cleanCacheIfNeeded() {
+    final currentTime = DateTime.now().millisecondsSinceEpoch;
+    if (_colourCache.length > MAX_CACHE_SIZE &&
+        currentTime - _lastCacheClean > 30000) {
+      final entries = _colourCache.entries.take(MAX_CACHE_SIZE ~/ 2).toList();
+      _colourCache.clear();
+      _colourCache.addAll(Map.fromEntries(entries));
+
+      _lastCacheClean = currentTime;
+    }
+  }
+
   static void clearCache() {
     _colourCache.clear();
+    _lastCacheClean = DateTime.now().millisecondsSinceEpoch;
   }
+
+  static int get cacheSize => _colourCache.length;
 }

@@ -29,8 +29,8 @@ class ConfigManager {
     return port;
   }
 
-  void updateSliderConfig(int sliderIndex, String? processPath,
-      double volumeValue, String sliderTag, bool isMuted) {
+  void updateSliderConfig(
+      int sliderIndex, String? processPath, String sliderTag, bool isMuted) {
     if (_sliderConfigsCache.length <= sliderIndex) {
       _sliderConfigsCache = List.filled(8, null);
     }
@@ -43,7 +43,6 @@ class ConfigManager {
     // config map
     _sliderConfigsCache[sliderIndex] = {
       'processName': processName,
-      'volumeValue': volumeValue,
       'sliderTag': sliderTag,
       'isMuted': isMuted,
     };
@@ -284,8 +283,7 @@ class ConfigManager {
         processPath = assignedApps[i]?.processPath;
       }
 
-      updateSliderConfig(
-          i, processPath, sliderValues[i], sliderTags[i], muteStates[i]);
+      updateSliderConfig(i, processPath, sliderTags[i], muteStates[i]);
     }
 
     await saveAllSliderConfigs();
@@ -294,8 +292,7 @@ class ConfigManager {
 
   Future<void> onApplicationAssigned(int sliderIndex, ProcessVolume app,
       double volume, String sliderTag, bool isMuted) async {
-    updateSliderConfig(
-        sliderIndex, app.processPath, volume, sliderTag, isMuted);
+    updateSliderConfig(sliderIndex, app.processPath, sliderTag, isMuted);
 
     await saveAllSliderConfigs();
     print('Application assigned to slider $sliderIndex and saved to disk');
@@ -303,7 +300,7 @@ class ConfigManager {
 
   Future<void> onSpecialSliderAssigned(
       int sliderIndex, String specialTag, double volume, bool isMuted) async {
-    updateSliderConfig(sliderIndex, null, volume, specialTag, isMuted);
+    updateSliderConfig(sliderIndex, null, specialTag, isMuted);
 
     await saveAllSliderConfigs();
     print(

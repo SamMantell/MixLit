@@ -4,10 +4,10 @@ import 'package:mixlit/backend/serial/SerialWorker.dart';
 import 'package:mixlit/frontend/components/icon_colour_extractor.dart';
 import 'package:mixlit/backend/application/ConfigManager.dart';
 import 'package:mixlit/backend/application/ApplicationManager.dart';
+import 'package:mixlit/frontend/components/util/rate_limit_updates.dart';
 import 'package:win32audio/win32audio.dart';
 
 /// LED controller for setting LEDs
-/// TODO: ask sam about firmware improvements
 class LEDController {
   final SerialWorker _serialWorker;
   final ApplicationManager _applicationManager;
@@ -18,13 +18,11 @@ class LEDController {
   final Map<String, Uint8List?> _appIcons;
   bool _isAnimated = false;
 
-  // LEDController instance
-  //
-  // [serialWorker]: serial communication worker
-  // [applicationManager]: application manager instance
-  // [sliderValues]: List of current slider values
-  // [sliderTags]: List of slider tags (app, master, etc..)
-  // [appIcons]: Map of application paths to respective icons
+  late final RateLimitedUpdater _ledUpdater;
+  final Map<int, bool> _pendingSliderUpdates = {};
+
+  static const int LED_UPDATE_INTERVAL_MS = 100; // Reduced from 50ms
+
   LEDController({
     required SerialWorker serialWorker,
     required ApplicationManager applicationManager,
@@ -38,15 +36,20 @@ class LEDController {
         _sliderTags = List<String>.from(sliderTags),
         _appIcons = Map<String, Uint8List?>.from(appIcons),
         _isAnimated = isAnimated {
+    _ledUpdater = RateLimitedUpdater(
+      Duration(milliseconds: LED_UPDATE_INTERVAL_MS ~/ 2),
+      _processPendingUpdates,
+    );
+
     _startUpdateTimer();
   }
 
   void _startUpdateTimer() {
     _updateTimer?.cancel();
     if (_isAnimated) {
-      _updateTimer = Timer.periodic(const Duration(milliseconds: 50), (_) {
-        updateAllLEDs();
-      });
+      _updateTimer = Timer.periodic(
+          Duration(milliseconds: LED_UPDATE_INTERVAL_MS),
+          (_) => _requestAllLEDUpdate());
     }
   }
 
@@ -62,32 +65,51 @@ class LEDController {
     setAnimated(!_isAnimated);
   }
 
+  // rate limited update request
+  void _requestAllLEDUpdate() {
+    for (int i = 0; i < _sliderValues.length; i++) {
+      _pendingSliderUpdates[i] = true;
+    }
+    _ledUpdater.requestUpdate();
+  }
+
+  void _processPendingUpdates() {
+    _pendingSliderUpdates.forEach((sliderIndex, _) {
+      _updateSingleSliderLED(sliderIndex);
+    });
+    _pendingSliderUpdates.clear();
+  }
+
   Future<void> updateAllLEDs() async {
     if (!_serialWorker.isDeviceConnected) {
       return;
     }
 
     for (int i = 0; i < _sliderValues.length; i++) {
-      await updateSliderLEDs(i);
+      await _updateSingleSliderLED(i);
     }
   }
 
-  /// Update specific slider LEDs with colors and value, anim state etc..
+  /// Update specific slider LEDs with colors and value, anim state etc.. (rate limiting added too)
   Future<void> updateSliderLEDs(int sliderIndex) async {
+    if (!_serialWorker.isDeviceConnected ||
+        sliderIndex >= _sliderValues.length) {
+      return;
+    }
+    _pendingSliderUpdates[sliderIndex] = true;
+    _ledUpdater.requestUpdate();
+  }
+
+  Future<void> _updateSingleSliderLED(int sliderIndex) async {
     if (!_serialWorker.isDeviceConnected ||
         sliderIndex >= _sliderValues.length) {
       return;
     }
 
     Color sliderColor = await _getColorForSlider(sliderIndex);
-
     _currentSliderColors[sliderIndex] = sliderColor;
 
     final command = _generateLEDCommand(sliderIndex, sliderColor);
-
-    // debug slider colour data
-    //print('\n\nSending LED command for slider $sliderIndex: $command');
-
     await _serialWorker.sendCommand(command);
   }
 
@@ -95,7 +117,6 @@ class LEDController {
     StringBuffer command = StringBuffer();
 
     command.write(sliderIndex.toRadixString(16));
-
     command.write(_isAnimated ? '1' : '0');
 
     final colorHex = _colorToHex(color);
@@ -128,40 +149,45 @@ class LEDController {
   Future<Color> _getColorForSlider(int sliderIndex) async {
     final sliderTag = _sliderTags[sliderIndex];
 
-    //TODO: centralise these colour variables somewhere for easy customisability
-    if (sliderTag == ConfigManager.TAG_DEFAULT_DEVICE) {
-      return const Color.fromARGB(255, 129, 191, 205);
-    } else if (sliderTag == ConfigManager.TAG_MASTER_VOLUME) {
-      return const Color.fromARGB(255, 255, 255, 255);
-    } else if (sliderTag == ConfigManager.TAG_ACTIVE_APP) {
-      return const Color.fromARGB(255, 69, 205, 255);
-    } else if (sliderTag == ConfigManager.TAG_UNASSIGNED) {
-      return const Color.fromARGB(255, 51, 51, 51);
-    } else if (sliderTag == ConfigManager.TAG_APP) {
-      final app = _getAppForSlider(sliderIndex);
-      if (app != null) {
-        final appPath = app.processPath;
-        if (_appIcons.containsKey(appPath)) {
-          final iconData = _appIcons[appPath];
-          if (iconData != null) {
-            try {
-              return await IconColorExtractor.extractDominantColor(
-                iconData,
-                appPath,
-                defaultColor: const Color.fromARGB(255, 243, 237, 191),
-              );
-            } catch (e) {
-              print('Error extracting color: $e');
-              return const Color.fromARGB(255, 243, 237, 191); // Default yellow
+    const Color deviceColor = Color.fromARGB(255, 129, 191, 205);
+    const Color masterColor = Color.fromARGB(255, 255, 255, 255);
+    const Color activeAppColor = Color.fromARGB(255, 69, 205, 255);
+    const Color unassignedColor = Color.fromARGB(255, 51, 51, 51);
+    const Color defaultAppColor = Color.fromARGB(255, 243, 237, 191);
+
+    switch (sliderTag) {
+      case ConfigManager.TAG_DEFAULT_DEVICE:
+        return deviceColor;
+      case ConfigManager.TAG_MASTER_VOLUME:
+        return masterColor;
+      case ConfigManager.TAG_ACTIVE_APP:
+        return activeAppColor;
+      case ConfigManager.TAG_UNASSIGNED:
+        return unassignedColor;
+      case ConfigManager.TAG_APP:
+        final app = _getAppForSlider(sliderIndex);
+        if (app != null) {
+          final appPath = app.processPath;
+          if (_appIcons.containsKey(appPath)) {
+            final iconData = _appIcons[appPath];
+            if (iconData != null) {
+              try {
+                return await IconColorExtractor.extractDominantColor(
+                  iconData,
+                  appPath,
+                  defaultColor: defaultAppColor,
+                );
+              } catch (e) {
+                print('Error extracting color: $e');
+                return defaultAppColor;
+              }
             }
           }
         }
-      }
-      //fallback app colour
-      return const Color.fromARGB(255, 243, 237, 191);
+        return defaultAppColor;
+      default:
+        return defaultAppColor;
     }
-    //fallback default colour
-    return const Color.fromARGB(255, 243, 237, 191);
   }
 
   ProcessVolume? _getAppForSlider(int sliderIndex) {
@@ -170,52 +196,62 @@ class LEDController {
     }
 
     try {
-      if (_applicationManager.assignedApplications.length > sliderIndex) {
-        return _applicationManager.assignedApplications[sliderIndex];
-      }
+      return _applicationManager.assignedApplications[sliderIndex];
     } catch (e) {
       print('Error accessing ApplicationManager: $e');
+      return null;
     }
-
-    return null;
   }
 
   void updateSliderValues(List<double> sliderValues) {
+    bool hasChanges = false;
     for (int i = 0; i < sliderValues.length && i < _sliderValues.length; i++) {
-      _sliderValues[i] = sliderValues[i];
+      if (_sliderValues[i] != sliderValues[i]) {
+        _sliderValues[i] = sliderValues[i];
+        hasChanges = true;
+      }
     }
 
-    if (!_isAnimated) {
-      updateAllLEDs();
+    if (hasChanges && !_isAnimated) {
+      _requestAllLEDUpdate();
     }
   }
 
   void updateSliderValue(int sliderIndex, double value) {
     if (sliderIndex < 0 || sliderIndex >= _sliderValues.length) return;
 
-    _sliderValues[sliderIndex] = value;
+    if (_sliderValues[sliderIndex] != value) {
+      _sliderValues[sliderIndex] = value;
 
-    if (!_isAnimated) {
-      updateSliderLEDs(sliderIndex);
+      if (!_isAnimated) {
+        updateSliderLEDs(sliderIndex);
+      }
     }
   }
 
   void updateAppIcons(Map<String, Uint8List?> appIcons) {
     _appIcons.clear();
     _appIcons.addAll(appIcons);
-
-    updateAllLEDs();
+    _requestAllLEDUpdate();
   }
 
   void updateSliderTags(List<String> sliderTags) {
+    bool hasChanges = false;
     for (int i = 0; i < sliderTags.length && i < _sliderTags.length; i++) {
-      _sliderTags[i] = sliderTags[i];
+      if (_sliderTags[i] != sliderTags[i]) {
+        _sliderTags[i] = sliderTags[i];
+        hasChanges = true;
+      }
     }
 
-    updateAllLEDs();
+    if (hasChanges) {
+      _requestAllLEDUpdate();
+    }
   }
 
   void dispose() {
     _updateTimer?.cancel();
+    _ledUpdater.dispose();
+    _pendingSliderUpdates.clear();
   }
 }

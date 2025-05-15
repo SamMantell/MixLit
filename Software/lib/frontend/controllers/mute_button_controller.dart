@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:mixlit/backend/application/VolumeController.dart';
 
 class MuteButtonController {
   final List<bool> muteStates;
@@ -14,6 +15,8 @@ class MuteButtonController {
 
   final Function(int, double) onVolumeAdjustment;
   final Function(int, double)? onSliderValueUpdated;
+
+  VolumeController? _volumeController;
 
   MuteButtonController({
     required int buttonCount,
@@ -32,7 +35,7 @@ class MuteButtonController {
         buttonPressStartTimes = List.filled(buttonCount, null),
         isLongPressing = List.filled(buttonCount, false),
         wasUnmutedBeforeLongPress = List.filled(buttonCount, false),
-        previousVolumeValues = List.filled(buttonCount, 1.0) {
+        previousVolumeValues = List.filled(buttonCount, 0.0) {
     for (var controller in buttonAnimControllers) {
       buttonAnimations.add(CurvedAnimation(
         parent: controller,
@@ -41,18 +44,22 @@ class MuteButtonController {
     }
   }
 
-  void muteAudio(int sliderIndex) {
-    if (!muteStates[sliderIndex]) {
-      previousVolumeValues[sliderIndex] = previousVolumeValues[sliderIndex];
-    }
+  void setVolumeController(VolumeController volumeController) {
+    _volumeController = volumeController;
+  }
 
+  void updatePreviousVolumeValue(int sliderIndex, double value) {
+    if (!muteStates[sliderIndex]) {
+      previousVolumeValues[sliderIndex] = value;
+    }
+  }
+
+  void muteAudio(int sliderIndex) {
     muteStates[sliderIndex] = true;
 
-    if (onSliderValueUpdated != null) {
-      onSliderValueUpdated!(sliderIndex, muteVolume);
-    }
+    _volumeController?.updateMuteState(sliderIndex, true);
 
-    onVolumeAdjustment(sliderIndex, muteVolume);
+    _volumeController?.setMuteState(sliderIndex, true);
 
     buttonAnimControllers[sliderIndex].forward();
   }
@@ -60,11 +67,9 @@ class MuteButtonController {
   void unmuteAudio(int sliderIndex) {
     muteStates[sliderIndex] = false;
 
-    if (onSliderValueUpdated != null) {
-      onSliderValueUpdated!(sliderIndex, previousVolumeValues[sliderIndex]);
-    }
+    _volumeController?.updateMuteState(sliderIndex, false);
 
-    onVolumeAdjustment(sliderIndex, previousVolumeValues[sliderIndex]);
+    _volumeController?.setMuteState(sliderIndex, false);
 
     buttonAnimControllers[sliderIndex].duration =
         const Duration(milliseconds: 100);
@@ -83,6 +88,10 @@ class MuteButtonController {
   }
 
   void updateDirectly(int sliderIndex, double value) {
+    if (!muteStates[sliderIndex]) {
+      previousVolumeValues[sliderIndex] = value;
+    }
+
     if (onSliderValueUpdated != null) {
       onSliderValueUpdated!(sliderIndex, value);
     }
@@ -93,6 +102,13 @@ class MuteButtonController {
     buttonPressStartTimes[buttonIndex] = DateTime.now();
 
     wasUnmutedBeforeLongPress[buttonIndex] = !muteStates[buttonIndex];
+    if (!muteStates[buttonIndex]) {
+      if (_volumeController != null) {
+        previousVolumeValues[buttonIndex] =
+            _volumeController!.applicationManager.sliderValues[buttonIndex];
+      }
+    }
+
     if (muteStates[buttonIndex]) {
       unmuteAudio(buttonIndex);
     } else {

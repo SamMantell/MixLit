@@ -3,11 +3,12 @@ import 'dart:typed_data';
 import 'package:flutter_libserialport/flutter_libserialport.dart';
 
 class SerialPortReader {
-  static const int CHUNK_SIZE = 256; //dont change unless sigma
+  static const int CHUNK_SIZE = 256;
+  static const int READ_INTERVAL_MS = 10;
+
   final SerialPort _port;
   final StreamController<List<int>> _controller = StreamController<List<int>>();
   final List<int> _buffer = [];
-
   Timer? _readTimer;
   bool _isReading = false;
   bool _isClosed = false;
@@ -25,7 +26,8 @@ class SerialPortReader {
     if (_isReading || _isClosed) return;
     _isReading = true;
 
-    _readTimer = Timer.periodic(Duration(milliseconds: 0), (timer) {
+    _readTimer =
+        Timer.periodic(Duration(milliseconds: READ_INTERVAL_MS), (timer) {
       if (!_isReading || _isClosed) {
         timer.cancel();
         return;
@@ -52,7 +54,6 @@ class SerialPortReader {
 
       final toRead = available.clamp(0, CHUNK_SIZE);
       final data = _port.read(toRead);
-
       if (data.isEmpty) return;
 
       _processData(data);
@@ -83,7 +84,6 @@ class SerialPortReader {
         _buffer.removeRange(0, start);
       }
 
-      // prevent buffer from bigging
       if (_buffer.length > 1024) {
         _buffer.clear();
       }

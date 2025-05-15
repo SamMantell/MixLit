@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:mixlit/backend/application/ApplicationManager.dart';
 import 'package:mixlit/backend/application/AppInstanceManager.dart';
 import 'package:mixlit/backend/application/ConfigManager.dart';
@@ -5,34 +6,107 @@ import 'package:win32audio/win32audio.dart';
 
 class VolumeController {
   final ApplicationManager applicationManager;
-  final List<String> sliderTags;
-  final List<ProcessVolume?> assignedApps;
+  List<String> sliderTags;
+  List<ProcessVolume?> assignedApps;
   final AppInstanceManager _appInstanceManager = AppInstanceManager.instance;
+
+  static const int RATE_LIMIT_MS = 50;
+  DateTime _lastVolumeUpdate = DateTime.now();
+  Timer? _pendingVolumeTimer;
+  final Map<int, double> _pendingVolumeChanges = {};
+
+  final Map<int, double> _storedVolumeValues = {};
+
+  final Map<int, bool> _muteStates = {};
+
   static const double muteVolume = 0.0001;
 
   VolumeController({
     required this.applicationManager,
     required this.sliderTags,
     required this.assignedApps,
-  });
+  }) {
+    for (int i = 0; i < applicationManager.muteStates.length; i++) {
+      _muteStates[i] = applicationManager.muteStates[i];
+      if (_muteStates[i] == true) {
+        _storedVolumeValues[i] = applicationManager.sliderValues[i];
+      }
+    }
+  }
+
+  void updateSliderTags(List<String> newTags) {
+    sliderTags = newTags;
+  }
+
+  void updateAssignedApps(List<ProcessVolume?> newApps) {
+    assignedApps = newApps;
+  }
+
+  void updateMuteState(int sliderId, bool isMuted) {
+    _muteStates[sliderId] = isMuted;
+  }
+
+  bool isSliderMuted(int sliderId) {
+    return _muteStates[sliderId] ?? false;
+  }
+
+  void storeVolumeValue(int sliderId, double value) {
+    _storedVolumeValues[sliderId] = value;
+    applicationManager.sliderValues[sliderId] = value;
+  }
+
+  double getStoredVolumeValue(int sliderId) {
+    return _storedVolumeValues[sliderId] ??
+        applicationManager.sliderValues[sliderId];
+  }
 
   void adjustVolume(int sliderId, double value,
       {bool bypassRateLimit = false}) {
-    if (bypassRateLimit || value <= muteVolume) {
+    applicationManager.sliderValues[sliderId] = value;
+
+    if (isSliderMuted(sliderId) && value > muteVolume) {
+      storeVolumeValue(sliderId, value);
+      return;
+    }
+
+    if (value <= muteVolume || bypassRateLimit) {
       directVolumeAdjustment(sliderId, value);
       return;
     }
 
-    final tag = sliderTags[sliderId];
+    _pendingVolumeChanges[sliderId] = value;
+    _scheduleVolumeUpdate();
+  }
 
-    if (tag == ConfigManager.TAG_DEFAULT_DEVICE ||
-        tag == ConfigManager.TAG_MASTER_VOLUME) {
-      applicationManager.adjustDeviceVolume(value);
-    } else if (tag == ConfigManager.TAG_APP && assignedApps[sliderId] != null) {
-      applicationManager.adjustVolume(sliderId, value);
-    } else if (tag == ConfigManager.TAG_ACTIVE_APP) {
-      applicationManager.sliderValues[sliderId] = value;
+  void _scheduleVolumeUpdate() {
+    if (_pendingVolumeTimer?.isActive ?? false) return;
+
+    final now = DateTime.now();
+    final timeSinceLastUpdate =
+        now.difference(_lastVolumeUpdate).inMilliseconds;
+
+    if (timeSinceLastUpdate < RATE_LIMIT_MS) {
+      final delayMs = RATE_LIMIT_MS - timeSinceLastUpdate;
+      _pendingVolumeTimer =
+          Timer(Duration(milliseconds: delayMs), _applyPendingChanges);
+    } else {
+      _applyPendingChanges();
     }
+  }
+
+  void _applyPendingChanges() {
+    _lastVolumeUpdate = DateTime.now();
+
+    final changes = Map<int, double>.from(_pendingVolumeChanges);
+    _pendingVolumeChanges.clear();
+
+    changes.forEach((sliderId, value) {
+      if (!isSliderMuted(sliderId) || value <= muteVolume) {
+        directVolumeAdjustment(sliderId, value);
+      } else {
+        storeVolumeValue(sliderId, value);
+      }
+    });
   }
 
   Future<void> directVolumeAdjustment(int sliderId, double value) async {
@@ -42,6 +116,8 @@ class VolumeController {
         tag == ConfigManager.TAG_MASTER_VOLUME) {
       int volumeLevel = ((value / 1024) * 100).round();
       Audio.setVolume(volumeLevel / 100, AudioDeviceType.output);
+
+      applicationManager.sliderValues[sliderId] = value;
     } else if (tag == ConfigManager.TAG_APP && assignedApps[sliderId] != null) {
       final app = assignedApps[sliderId];
       if (app != null) {
@@ -49,39 +125,55 @@ class VolumeController {
         if (volumeLevel <= 0.009) {
           volumeLevel = 0.0001;
         }
-        bool hasMultipleInstances =
-            await _appInstanceManager.hasMultipleInstances(app);
-        if (hasMultipleInstances) {
-          await _appInstanceManager.setVolumeForAllInstances(app, volumeLevel);
-        } else {
-          Audio.setAudioMixerVolume(app.processId, volumeLevel);
+
+        try {
+          bool hasMultipleInstances =
+              await _appInstanceManager.hasMultipleInstances(app);
+          if (hasMultipleInstances) {
+            await _appInstanceManager.setVolumeForAllInstances(
+                app, volumeLevel);
+          } else {
+            Audio.setAudioMixerVolume(app.processId, volumeLevel);
+          }
+        } catch (e) {
+          print('Error adjusting app volume: $e');
+          try {
+            Audio.setAudioMixerVolume(app.processId, volumeLevel);
+          } catch (fallbackError) {
+            print('Fallback volume adjustment failed: $fallbackError');
+          }
         }
+
+        applicationManager.sliderValues[sliderId] = value;
       }
     } else if (tag == ConfigManager.TAG_ACTIVE_APP) {
       applicationManager.sliderValues[sliderId] = value;
     }
 
     applicationManager.updateSliderConfig(sliderId, value, value <= muteVolume);
-
-    if (tag == ConfigManager.TAG_APP && assignedApps[sliderId] != null) {
-    } else if (tag == ConfigManager.TAG_DEFAULT_DEVICE ||
-        tag == ConfigManager.TAG_MASTER_VOLUME) {
-      applicationManager.adjustDeviceVolume(value);
-    }
   }
 
   Future<void> setMuteState(int sliderId, bool isMuted) async {
+    updateMuteState(sliderId, isMuted);
+
     if (isMuted) {
+      _storedVolumeValues[sliderId] = applicationManager.sliderValues[sliderId];
       await directVolumeAdjustment(sliderId, muteVolume);
     } else {
-      await directVolumeAdjustment(
-          sliderId, applicationManager.sliderValues[sliderId]);
+      final storedValue = getStoredVolumeValue(sliderId);
+      await directVolumeAdjustment(sliderId, storedValue);
     }
-
     applicationManager.setMuteState(sliderId, isMuted);
   }
 
   void assignSpecialFeature(int sliderId, String featureTag) {
     applicationManager.assignSpecialFeatureToSlider(sliderId, featureTag);
+  }
+
+  void dispose() {
+    _pendingVolumeTimer?.cancel();
+    _pendingVolumeChanges.clear();
+    _storedVolumeValues.clear();
+    _muteStates.clear();
   }
 }

@@ -1,5 +1,7 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:mixlit/backend/application/VolumeController.dart';
+import 'package:mixlit/frontend/components/util/rate_limit_updates.dart';
 import 'package:tray_manager/tray_manager.dart';
 import 'package:win32audio/win32audio.dart';
 import 'package:mixlit/backend/application/LEDController.dart';
@@ -8,7 +10,6 @@ import 'package:mixlit/backend/serial/SerialWorker.dart';
 import 'package:mixlit/backend/application/ApplicationManager.dart';
 import 'package:mixlit/backend/application/ConfigManager.dart';
 import 'package:mixlit/frontend/controllers/mute_button_controller.dart';
-import 'package:mixlit/frontend/controllers/volume_controller.dart';
 import 'package:mixlit/frontend/controllers/connection_handler.dart';
 import 'package:mixlit/frontend/controllers/device_event_handler.dart';
 import 'package:mixlit/frontend/components/vertical_slider_card.dart';
@@ -34,11 +35,14 @@ class _HomePageState extends State<HomePage>
   late final DeviceEventHandler _deviceEventHandler;
 
   // App state
-  final List<double> _sliderValues = List.filled(5, 0.5);
+  final List<double> _sliderValues = List.filled(5, 0.0);
   List<ProcessVolume?> _assignedApps = List.filled(5, null);
   final Map<String, Uint8List?> _appIcons = {};
   List<String> _sliderTags = List.filled(5, 'unassigned');
   bool _configLoaded = false;
+
+  late final RateLimitedUpdater _uiUpdater;
+  late final BatchedValueUpdater<double> _sliderUpdater;
 
   // Colouring
   final Map<int, Color> _sliderColors = {};
@@ -58,6 +62,16 @@ class _HomePageState extends State<HomePage>
     _initTray();
     windowManager.addListener(this);
 
+    _uiUpdater = RateLimitedUpdater(
+      const Duration(milliseconds: 2),
+      _performUIUpdate,
+    );
+
+    _sliderUpdater = BatchedValueUpdater<double>(
+      const Duration(milliseconds: 2),
+      _batchUpdateSliders,
+    );
+
     _muteButtonController = MuteButtonController(
       buttonCount: 5,
       vsync: this,
@@ -71,6 +85,13 @@ class _HomePageState extends State<HomePage>
         sliderTags: _sliderTags,
         assignedApps: _assignedApps,
       );
+
+      _muteButtonController.setVolumeController(_volumeController);
+
+      for (int i = 0; i < _muteButtonController.muteStates.length; i++) {
+        _volumeController.updateMuteState(
+            i, _muteButtonController.muteStates[i]);
+      }
 
       _connectionHandler = ConnectionHandler();
 
@@ -204,18 +225,38 @@ class _HomePageState extends State<HomePage>
   void _handleSliderData(Map<int, int> data) {
     if (!_configLoaded) return;
 
-    setState(() {
-      data.forEach((sliderId, sliderValue) {
-        if (sliderId >= 0 && sliderId < _sliderValues.length) {
-          if (!_muteButtonController.muteStates[sliderId]) {
-            _sliderValues[sliderId] = sliderValue.toDouble();
-            _volumeController.adjustVolume(sliderId, sliderValue.toDouble());
+    data.forEach((sliderId, sliderValue) {
+      if (sliderId >= 0 && sliderId < _sliderValues.length) {
+        _sliderUpdater.updateValue(sliderId.toString(), sliderValue.toDouble());
+        _ledController.updateSliderValue(sliderId, sliderValue.toDouble());
 
-            _ledController.updateSliderValue(sliderId, sliderValue.toDouble());
-          }
+        _muteButtonController.updatePreviousVolumeValue(
+            sliderId, sliderValue.toDouble());
+
+        if (!_muteButtonController.muteStates[sliderId]) {
+          _volumeController.adjustVolume(sliderId, sliderValue.toDouble());
+        } else {
+          _volumeController.storeVolumeValue(sliderId, sliderValue.toDouble());
         }
-      });
+      }
     });
+
+    _uiUpdater.requestUpdate();
+  }
+
+  void _batchUpdateSliders(Map<String, double> updates) {
+    updates.forEach((sliderIdStr, value) {
+      final sliderId = int.parse(sliderIdStr);
+      if (sliderId >= 0 && sliderId < _sliderValues.length) {
+        _sliderValues[sliderId] = value;
+      }
+    });
+  }
+
+  void _performUIUpdate() {
+    if (mounted && _configLoaded) {
+      setState(() {});
+    }
   }
 
   void _handleButtonEvent(int buttonIndex, bool isPressed, bool isReleased) {
@@ -228,18 +269,14 @@ class _HomePageState extends State<HomePage>
       } else {
         _sliderValues[buttonIndex] = MuteButtonController.muteVolume;
       }
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          setState(() {});
-        }
-      });
 
       _muteButtonController.handleButtonDown(buttonIndex);
-      setState(() {});
       _muteButtonController.checkLongPress(buttonIndex);
+
+      _uiUpdater.requestUpdate();
     } else if (isReleased) {
       _muteButtonController.handleButtonUp(buttonIndex);
-      setState(() {});
+      _uiUpdater.requestUpdate();
     }
   }
 
@@ -254,48 +291,60 @@ class _HomePageState extends State<HomePage>
   }
 
   void _handleVolumeAdjustment(int sliderId, double value) {
-    setState(() {
-      _sliderValues[sliderId] = value;
-    });
-
-    final bool bypassRateLimit = value <= MuteButtonController.muteVolume ||
-        _muteButtonController.muteStates[sliderId];
-
-    _volumeController.adjustVolume(sliderId, value,
-        bypassRateLimit: bypassRateLimit);
+    _sliderValues[sliderId] = value;
 
     _ledController.updateSliderValue(sliderId, value);
+
+    _muteButtonController.updatePreviousVolumeValue(sliderId, value);
+
+    if (!_muteButtonController.muteStates[sliderId]) {
+      final bool bypassRateLimit = value <= MuteButtonController.muteVolume;
+      _volumeController.adjustVolume(sliderId, value,
+          bypassRateLimit: bypassRateLimit);
+    } else {
+      _volumeController.storeVolumeValue(sliderId, value);
+    }
+
+    _uiUpdater.requestUpdate();
   }
 
   void _handleDirectVolumeAdjustment(int sliderId, double value) {
-    setState(() {
-      _sliderValues[sliderId] = value;
-    });
+    _sliderValues[sliderId] = value;
 
     _volumeController.directVolumeAdjustment(sliderId, value);
+    _uiUpdater.requestUpdate();
   }
 
   void _updateSliderValue(int sliderId, double value) {
     _sliderValues[sliderId] = value;
-
-    if (mounted) {
-      setState(() {});
-    }
+    _uiUpdater.requestUpdate();
   }
 
   void _toggleMute(int index) {
+    if (!_muteButtonController.muteStates[index]) {
+      _muteButtonController.previousVolumeValues[index] = _sliderValues[index];
+      _volumeController.storeVolumeValue(index, _sliderValues[index]);
+    }
+
     _muteButtonController.toggleMuteState(index);
-    setState(() {});
+    _uiUpdater.requestUpdate();
   }
 
   @override
   void dispose() {
+    _uiUpdater.dispose();
+    _sliderUpdater.dispose();
+
     _worker.dispose();
     _muteButtonController.dispose();
     if (_configLoaded) {
       _ledController.dispose();
       _deviceEventHandler.dispose();
+      _volumeController.dispose();
+      _connectionHandler.dispose();
     }
+    windowManager.removeListener(this);
+    trayManager.removeListener(this);
     super.dispose();
   }
 
@@ -316,19 +365,16 @@ class _HomePageState extends State<HomePage>
     if (previousAssignedApp != _assignedApps[index] ||
         previousTag != _sliderTags[index]) {
       await _updateSliderColor(index);
-
       _ledController.updateSliderLEDs(index);
     }
 
     setState(() {
       _volumeController.updateSliderTags(_sliderTags);
       _volumeController.updateAssignedApps(_assignedApps);
-
       _ledController.updateSliderTags(_sliderTags);
     });
   }
 
-  //TODO: add toggle lights button in settings menu at some later stage
   void _toggleLEDAnimation() {
     setState(() {
       _useAnimatedLEDs = !_useAnimatedLEDs;
@@ -377,7 +423,6 @@ class _HomePageState extends State<HomePage>
   @override
   Widget build(BuildContext context) {
     final bool isDarkMode = Theme.of(context).brightness == Brightness.dark;
-    // loading
     if (!_configLoaded) {
       return Scaffold(
         backgroundColor:
@@ -410,18 +455,18 @@ class _HomePageState extends State<HomePage>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // App header with logo and connection status
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Row(
+                  const Expanded(child: SizedBox()),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
                       Image.asset(
                         'lib/frontend/assets/images/logo/mixlit_full.png',
                         height: 60,
                         fit: BoxFit.contain,
                       ),
-                      const SizedBox(width: 8),
+                      const SizedBox(height: 8),
                       Text(
                         'Volume Mixer Thingy Majig 9000',
                         style: TextStyle(
@@ -436,48 +481,57 @@ class _HomePageState extends State<HomePage>
                       ),
                     ],
                   ),
-
-                  // Connection status indicator
-                  Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: _connectionHandler.isCurrentlyConnected
-                          ? Colors.green.withOpacity(0.1)
-                          : Colors.red.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(30),
-                      border: Border.all(
-                        color: _connectionHandler.isCurrentlyConnected
-                            ? Colors.green.withOpacity(0.3)
-                            : Colors.red.withOpacity(0.3),
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: ListenableBuilder(
+                        listenable: _connectionHandler,
+                        builder: (context, child) {
+                          return Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 16, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: _connectionHandler.isCurrentlyConnected
+                                  ? Colors.green.withOpacity(0.1)
+                                  : Colors.red.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(30),
+                              border: Border.all(
+                                color: _connectionHandler.isCurrentlyConnected
+                                    ? Colors.green.withOpacity(0.3)
+                                    : Colors.red.withOpacity(0.3),
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  _connectionHandler.isCurrentlyConnected
+                                      ? Icons.usb_rounded
+                                      : Icons.usb_off_rounded,
+                                  color: _connectionHandler.isCurrentlyConnected
+                                      ? Colors.green
+                                      : Colors.red,
+                                  size: 18,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  _connectionHandler.isCurrentlyConnected
+                                      ? 'Connected'
+                                      : 'Disconnected',
+                                  style: TextStyle(
+                                    fontFamily: 'BitstreamVeraSans',
+                                    color:
+                                        _connectionHandler.isCurrentlyConnected
+                                            ? Colors.green
+                                            : Colors.red,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
                       ),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          _connectionHandler.isCurrentlyConnected
-                              ? Icons.usb_rounded
-                              : Icons.usb_off_rounded,
-                          color: _connectionHandler.isCurrentlyConnected
-                              ? Colors.green
-                              : Colors.red,
-                          size: 18,
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          _connectionHandler.isCurrentlyConnected
-                              ? 'MixLit Connected'
-                              : 'MixLit Disconnected',
-                          style: TextStyle(
-                            fontFamily: 'BitstreamVeraSans',
-                            color: _connectionHandler.isCurrentlyConnected
-                                ? Colors.green
-                                : Colors.red,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
                     ),
                   ),
                 ],
@@ -488,7 +542,7 @@ class _HomePageState extends State<HomePage>
               // Main content with sliders in a horizontal layout
               Expanded(
                 child: Row(
-                  mainAxisAlignment: MainAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: List.generate(5, (index) {
                     final bool isMuted =
