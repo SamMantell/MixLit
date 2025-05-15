@@ -8,12 +8,12 @@ class CustomTooltip extends StatelessWidget {
   final Color? textColor;
 
   const CustomTooltip({
-    Key? key,
+    super.key,
     required this.child,
     required this.message,
     this.backgroundColor,
     this.textColor,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

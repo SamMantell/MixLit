@@ -41,7 +41,7 @@ class _HomePageState extends State<HomePage>
   bool _configLoaded = false;
 
   // Colouring
-  Map<int, Color> _sliderColors = {};
+  final Map<int, Color> _sliderColors = {};
 
   final Color _defaultAppColor = const Color.fromARGB(255, 188, 184, 147);
   final Color _deviceVolumeColor = const Color.fromARGB(255, 188, 184, 147);
@@ -90,10 +90,10 @@ class _HomePageState extends State<HomePage>
         isAnimated: _useAnimatedLEDs,
       );
 
-      _connectionHandler!
-          .initializeDeviceConnection(context, _worker.connectionState.first);
+      _connectionHandler.initializeDeviceConnection(
+          context, _worker.connectionState.first);
 
-      _deviceEventHandler!.initialize();
+      _deviceEventHandler.initialize();
 
       setState(() {
         _configLoaded = true;
@@ -183,11 +183,10 @@ class _HomePageState extends State<HomePage>
           List.from(_applicationManager.sliderTags.take(_sliderTags.length));
 
       for (int i = 0;
-          i < _muteButtonController!.muteStates.length &&
+          i < _muteButtonController.muteStates.length &&
               i < _applicationManager.muteStates.length;
           i++) {
-        _muteButtonController!.muteStates[i] =
-            _applicationManager.muteStates[i];
+        _muteButtonController.muteStates[i] = _applicationManager.muteStates[i];
       }
 
       for (int i = 0; i < _sliderTags.length; i++) {
@@ -203,7 +202,7 @@ class _HomePageState extends State<HomePage>
   }
 
   void _handleSliderData(Map<int, int> data) {
-    if (!_configLoaded || _volumeController == null) return;
+    if (!_configLoaded) return;
 
     setState(() {
       data.forEach((sliderId, sliderValue) {
@@ -301,8 +300,6 @@ class _HomePageState extends State<HomePage>
   }
 
   Future<void> _selectApp(int index) async {
-    if (_volumeController == null) return;
-
     final previousAssignedApp = _assignedApps[index];
     final previousTag = _sliderTags[index];
 
@@ -324,8 +321,8 @@ class _HomePageState extends State<HomePage>
     }
 
     setState(() {
-      _volumeController!.updateSliderTags(_sliderTags);
-      _volumeController!.updateAssignedApps(_assignedApps);
+      _volumeController.updateSliderTags(_sliderTags);
+      _volumeController.updateAssignedApps(_assignedApps);
 
       _ledController.updateSliderTags(_sliderTags);
     });

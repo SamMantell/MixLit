@@ -1,6 +1,4 @@
 import 'dart:async';
-import 'dart:typed_data';
-import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:mixlit/backend/serial/SerialWorker.dart';
 import 'package:mixlit/frontend/components/icon_colour_extractor.dart';

@@ -15,7 +15,7 @@ class VerticalSliderCard extends StatelessWidget {
   final bool isDarkMode;
 
   const VerticalSliderCard({
-    Key? key,
+    super.key,
     required this.title,
     required this.iconWidget,
     required this.value,
@@ -27,7 +27,7 @@ class VerticalSliderCard extends StatelessWidget {
     required this.onMutePressed,
     required this.onTap,
     required this.isDarkMode,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -361,12 +361,12 @@ class MuteButton extends StatelessWidget {
   final bool isActive;
 
   const MuteButton({
-    Key? key,
+    super.key,
     required this.isMuted,
     required this.accentColor,
     required this.onPressed,
     required this.isActive,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

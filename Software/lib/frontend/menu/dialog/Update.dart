@@ -27,11 +27,11 @@ class UpdateDialog extends StatefulWidget {
   final Function() onUpdateNow;
 
   const UpdateDialog({
-    Key? key,
+    super.key,
     required this.updateInfo,
     required this.onProgressUpdate,
     required this.onUpdateNow,
-  }) : super(key: key);
+  });
 
   @override
   _UpdateDialogState createState() => _UpdateDialogState();

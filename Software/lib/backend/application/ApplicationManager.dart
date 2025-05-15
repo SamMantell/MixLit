@@ -14,11 +14,11 @@ class ApplicationManager {
   static const int RATE_LIMIT_MS = 40;
   DateTime _lastVolumeAdjustment = DateTime.now();
   Timer? _pendingVolumeTimer;
-  Map<int, double> _pendingAppVolumes = {};
+  final Map<int, double> _pendingAppVolumes = {};
   double? _pendingDeviceVolume;
 
   bool _isConfigLoaded = false;
-  Completer<void> _configLoadCompleter = Completer<void>();
+  final Completer<void> _configLoadCompleter = Completer<void>();
 
   final ConfigManager _configManager = ConfigManager.instance;
 

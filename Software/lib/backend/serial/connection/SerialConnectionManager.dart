@@ -44,7 +44,7 @@ class SerialConnectionManager {
     ..dsr = 0
     ..dtr = 1;
 
-  Completer<void> _initCompleter = Completer<void>();
+  final Completer<void> _initCompleter = Completer<void>();
   Future<void> get initialized => _initCompleter.future;
 
   SerialConnectionManager({
@@ -422,7 +422,7 @@ class SerialConnectionManager {
       _startConnectionHealthCheck();
 
       await _setupPortReader();
-      print('Connection established successfully on port: ${_lastKnownPort}');
+      print('Connection established successfully on port: $_lastKnownPort');
 
       if (_lastKnownPort != null) {
         await _configManager.saveLastComPort(_lastKnownPort!);

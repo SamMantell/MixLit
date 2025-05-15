@@ -13,7 +13,7 @@ class CustomSlider extends StatelessWidget {
       SliderComponentShape.noOverlay;
 
   const CustomSlider({
-    Key? key,
+    super.key,
     required this.value,
     this.min = 0.0,
     this.max = 1024.0,
@@ -21,7 +21,7 @@ class CustomSlider extends StatelessWidget {
     this.inactiveColor,
     required this.onChanged,
     this.isMuted = false,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

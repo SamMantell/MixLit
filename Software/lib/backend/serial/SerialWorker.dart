@@ -159,7 +159,7 @@ class SerialWorker {
       final parts = line.split('|');
       if (parts.isEmpty) return;
 
-      if (parts.length > 0 &&
+      if (parts.isNotEmpty &&
           parts[0].length == 1 &&
           parts[0].codeUnitAt(0) >= 'A'.codeUnitAt(0) &&
           parts[0].codeUnitAt(0) <= 'E'.codeUnitAt(0)) {

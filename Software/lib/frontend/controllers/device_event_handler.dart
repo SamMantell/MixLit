@@ -9,7 +9,7 @@ class DeviceEventHandler {
   final Function(int, bool, bool) onButtonEvent;
   final Function(bool) onConnectionStateChanged;
 
-  List<StreamSubscription> _subscriptions = [];
+  final List<StreamSubscription> _subscriptions = [];
 
   DeviceEventHandler({
     required this.worker,
