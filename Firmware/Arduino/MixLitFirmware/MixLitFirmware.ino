@@ -57,7 +57,6 @@ CRGB leds[NUM_OF_LED_STRIPS][NUM_OF_LEDS_PER_STRIP];
 
 // LED Strip Variables for Colour Control
 bool isAnimated = false;
-bool softwareLEDControl = false;
 uint8_t ColorIndex;
 int colorIndexOffset;
 
@@ -127,6 +126,7 @@ void setLEDs(int iCurrentValue, int ledStrip)
 // Function to read data from the pc and use it to set the LED Colours on the MixLit
 void readSerialDataAndSetLEDs() {
   serialDataFromPC = Serial.readString();
+  Serial.println(serialDataFromPC);
 
   serialDataFromPC.toCharArray(tempFullHexStorage, 128);
 
@@ -268,7 +268,7 @@ void loop()
 
   for (int i = 0; i < NUM_OF_SLIDERS; i++)
   {
-    if (((abs(currentSliderState[i] - previousSliderState[i]) > 5) || isAnimated || needsUpdate) && !softwareLEDControl)
+    if ((abs(currentSliderState[i] - previousSliderState[i]) > 5) || isAnimated || needsUpdate)
     {
       if (currentSliderState[i] > 1020)
       {
@@ -319,6 +319,11 @@ void loop()
   }
   */
 
+  if (Serial.read() != -1)
+  {
+    readSerialDataAndSetLEDs();
+  }
+
   for (int i = 0; i < NUM_OF_BUTTONS; i++)
   {
     if (currentButtonState[i] != previousButtonState[i])
@@ -329,20 +334,6 @@ void loop()
       stringToSendToSoftware += "|";
       stringToSendToSoftware += int(currentButtonState[i]);
       stringToSendToSoftware += "|";
-    }
-  }
-
-  if (Serial.available() > 0) {
-    String command = Serial.readString();
-    command.trim();
-    if (command == "AUTO_LED_OFF") {
-      softwareLEDControl = true;
-    } 
-    else if (command == "AUTO_LED_ON") {
-      softwareLEDControl = false;
-    }
-    else {
-      readSerialDataAndSetLEDs();
     }
   }
 
