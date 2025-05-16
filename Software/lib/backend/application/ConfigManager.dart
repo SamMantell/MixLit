@@ -146,14 +146,14 @@ class ConfigManager {
       await _loadSliderConfigsFromDisk();
     }
 
-    final sliderValues = List<double>.filled(8, 512); // Default to 50%
+    final sliderValues = List<double>.filled(8, 0.1);
     final sliderTags = List<String>.filled(8, TAG_UNASSIGNED);
     final muteStates = List<bool>.filled(8, false);
 
     for (var i = 0; i < _sliderConfigsCache.length; i++) {
       final config = _sliderConfigsCache[i];
       if (config != null) {
-        sliderValues[i] = config['volumeValue'] ?? 512;
+        sliderValues[i] = config['volumeValue'] ?? 10;
         sliderTags[i] = config['sliderTag'] ?? TAG_UNASSIGNED;
         muteStates[i] = config['isMuted'] ?? false;
       }

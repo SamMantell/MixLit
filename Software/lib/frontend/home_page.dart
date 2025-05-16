@@ -4,7 +4,7 @@ import 'package:mixlit/backend/application/VolumeController.dart';
 import 'package:mixlit/frontend/components/util/rate_limit_updates.dart';
 import 'package:tray_manager/tray_manager.dart';
 import 'package:win32audio/win32audio.dart';
-import 'package:mixlit/backend/application/LEDController.dart';
+//import 'package:mixlit/backend/application/LEDController.dart';
 import 'package:mixlit/backend/application/Updater.dart';
 import 'package:mixlit/backend/serial/SerialWorker.dart';
 import 'package:mixlit/backend/application/ApplicationManager.dart';
@@ -53,8 +53,8 @@ class _HomePageState extends State<HomePage>
   final Color _activeAppColor = const Color.fromARGB(255, 69, 205, 255);
   final Color _unassignedColor = const Color.fromARGB(255, 51, 51, 51);
 
-  late final LEDController _ledController;
-  bool _useAnimatedLEDs = false;
+  //late final LEDController _ledController;
+  //bool _useAnimatedLEDs = false;
 
   @override
   void initState() {
@@ -102,14 +102,14 @@ class _HomePageState extends State<HomePage>
         onConnectionStateChanged: _handleConnectionStateChanged,
       );
 
-      _ledController = LEDController(
-        serialWorker: _worker,
-        applicationManager: _applicationManager,
-        sliderValues: _sliderValues,
-        sliderTags: _sliderTags,
-        appIcons: _appIcons,
-        isAnimated: _useAnimatedLEDs,
-      );
+      //_ledController = LEDController(
+      //  serialWorker: _worker,
+      //  applicationManager: _applicationManager,
+      //  sliderValues: _sliderValues,
+      //  sliderTags: _sliderTags,
+      //  appIcons: _appIcons,
+      //  isAnimated: _useAnimatedLEDs,
+      //);
 
       _connectionHandler.initializeDeviceConnection(
           context, _worker.connectionState.first);
@@ -120,7 +120,7 @@ class _HomePageState extends State<HomePage>
         _configLoaded = true;
       });
 
-      _ledController.updateAllLEDs();
+      //_ledController.updateAllLEDs();
 
       _checkForUpdates();
     });
@@ -228,7 +228,7 @@ class _HomePageState extends State<HomePage>
     data.forEach((sliderId, sliderValue) {
       if (sliderId >= 0 && sliderId < _sliderValues.length) {
         _sliderUpdater.updateValue(sliderId.toString(), sliderValue.toDouble());
-        _ledController.updateSliderValue(sliderId, sliderValue.toDouble());
+        //_ledController.updateSliderValue(sliderId, sliderValue.toDouble());
 
         _muteButtonController.updatePreviousVolumeValue(
             sliderId, sliderValue.toDouble());
@@ -293,7 +293,7 @@ class _HomePageState extends State<HomePage>
   void _handleVolumeAdjustment(int sliderId, double value) {
     _sliderValues[sliderId] = value;
 
-    _ledController.updateSliderValue(sliderId, value);
+    //_ledController.updateSliderValue(sliderId, value);
 
     _muteButtonController.updatePreviousVolumeValue(sliderId, value);
 
@@ -338,7 +338,7 @@ class _HomePageState extends State<HomePage>
     _worker.dispose();
     _muteButtonController.dispose();
     if (_configLoaded) {
-      _ledController.dispose();
+      //_ledController.dispose();
       _deviceEventHandler.dispose();
       _volumeController.dispose();
       _connectionHandler.dispose();
@@ -365,22 +365,22 @@ class _HomePageState extends State<HomePage>
     if (previousAssignedApp != _assignedApps[index] ||
         previousTag != _sliderTags[index]) {
       await _updateSliderColor(index);
-      _ledController.updateSliderLEDs(index);
+      //_ledController.updateSliderLEDs(index);
     }
 
     setState(() {
       _volumeController.updateSliderTags(_sliderTags);
       _volumeController.updateAssignedApps(_assignedApps);
-      _ledController.updateSliderTags(_sliderTags);
+      //_ledController.updateSliderTags(_sliderTags);
     });
   }
 
-  void _toggleLEDAnimation() {
-    setState(() {
-      _useAnimatedLEDs = !_useAnimatedLEDs;
-      _ledController.setAnimated(_useAnimatedLEDs);
-    });
-  }
+  //void _toggleLEDAnimation() {
+  //  setState(() {
+  //    _useAnimatedLEDs = !_useAnimatedLEDs;
+  //    _ledController.setAnimated(_useAnimatedLEDs);
+  //  });
+  //}
 
   Future<void> _updateSliderColor(int index) async {
     final app = _assignedApps[index];
@@ -411,7 +411,7 @@ class _HomePageState extends State<HomePage>
       _sliderColors[index] = _defaultAppColor;
     }
 
-    _ledController.updateSliderLEDs(index);
+    // _ledController.updateSliderLEDs(index);
   }
 
   Future<void> _checkForUpdates() async {
