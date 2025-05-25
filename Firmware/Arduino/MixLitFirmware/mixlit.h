@@ -1,6 +1,8 @@
 #include <FastLED.h>
 #include "definitions.h"
 
+#include <List.hpp>
+
 class mixlit {
   public:
     const int sliders[NUM_OF_SLIDERS] = {A4, A3, A2, A1, A0};
@@ -54,12 +56,18 @@ class mixlit {
     bool isConnected;
 
     String serialCommand;
+    List<String> serialCommandBuffer;
+
+    char tempFullHexStorage[128];
+    char tempPartHexStorage[6];
+    uint32_t HEX_VALUE[16];
+    int SliderToChange;
 
     void setLEDs(int iCurrentValue, int ledStrip)
     {
-      // if (isAnimated) colorIndexOffset++;
+      if (isAnimated) colorIndexOffset++;
 
-      // else colorIndexOffset = 0;
+      else colorIndexOffset = 0;
 
       // this will take the 10 bit value from the slider, and use bitshift and remainder calculation to get the number of leds on and the brightness of the final one.
       uint8_t iNumOfLedsOn = iCurrentValue >> 7;
@@ -67,7 +75,7 @@ class mixlit {
 
       for (int i = 0; i < 8; i++)
       {
-        ColorIndex = 16*i/* + colorIndexOffset*/;
+        ColorIndex = 16*i + colorIndexOffset;
 
         if (i == (NUM_OF_LEDS_PER_STRIP - 1 - iNumOfLedsOn))        leds[ledStrip][i] = ColorFromPalette( All_ColorPallete[ledStrip], ColorIndex, iFinalLedBrightness);
       
@@ -75,6 +83,7 @@ class mixlit {
           
         else                                                        leds[ledStrip][i] = ColorFromPalette( All_ColorPallete[ledStrip], ColorIndex, 0);
       }
+      if (isAnimated) delay(5);
     }
 
     void serialHandler()
@@ -91,21 +100,25 @@ class mixlit {
           }
           else
           {
-            Serial.println(serialCommand);
-            readDataSetLEDs(serialCommand);
+            //Serial.println(serialCommand);
+            serialCommandBuffer.add(serialCommand);
+            //Serial.println(serialCommandBuffer.get(0));
+            // readDataSetLEDs(serialCommand);
             serialCommand = "";
           }
         }
+      }
+      
+      while (serialCommandBuffer.getSize() != 0)
+      {
+        readDataSetLEDs(serialCommandBuffer.get(0));
+        //Serial.println(serialCommandBuffer.get(0));
+        serialCommandBuffer.removeFirst();
       }
     }
 
     void readDataSetLEDs(String serialDataFromPC)
     {
-      char tempFullHexStorage[128];
-      char tempPartHexStorage[6];
-      uint32_t HEX_VALUE[8];
-      int SliderToChange;
-
       serialDataFromPC.toCharArray(tempFullHexStorage, 128);
 
       tempPartHexStorage[1] = 0;
@@ -118,7 +131,7 @@ class mixlit {
       HEX_VALUE[0] = strtoul(tempPartHexStorage, NULL, 16);
       SliderToChange = HEX_VALUE[0];
 
-      Serial.println("setting led strip " + String(SliderToChange));
+      // Serial.println("setting led strip " + String(SliderToChange));
 
       tempPartHexStorage[0] = tempFullHexStorage[1];
       HEX_VALUE[0] = strtoul(tempPartHexStorage, NULL, 16);
