@@ -26,6 +26,17 @@ class mixlit {
     uint8_t ColorIndex;
     int colorIndexOffset;
 
+    int sliderToChange;
+    bool needsUpdate;
+
+    bool isConnected;
+
+    String serialCommand;
+    List<String> serialCommandBuffer;
+
+    uint32_t HEX_VALUE[16];
+    int SliderToChange;
+
     CRGBPalette16 All_ColorPallete[NUM_OF_LED_STRIPS] = 
     {
       CRGBPalette16   (
@@ -50,24 +61,16 @@ class mixlit {
                       )
     };
 
-    int sliderToChange;
-    bool needsUpdate;
-
-    bool isConnected;
-
-    String serialCommand;
-    List<String> serialCommandBuffer;
-
-    char tempFullHexStorage[128];
-    char tempPartHexStorage[6];
-    uint32_t HEX_VALUE[16];
-    int SliderToChange;
-
     void setLEDs(int iCurrentValue, int ledStrip)
     {
-      if (isAnimated) colorIndexOffset++;
-
-      else colorIndexOffset = 0;
+      if (isAnimated)
+      {
+        colorIndexOffset++;
+      }
+      else
+      {
+        colorIndexOffset = 0;
+      }
 
       // this will take the 10 bit value from the slider, and use bitshift and remainder calculation to get the number of leds on and the brightness of the final one.
       uint8_t iNumOfLedsOn = iCurrentValue >> 7;
@@ -112,41 +115,22 @@ class mixlit {
       while (serialCommandBuffer.getSize() != 0)
       {
         readDataSetLEDs(serialCommandBuffer.get(0));
-        //Serial.println(serialCommandBuffer.get(0));
+        // Serial.println(serialCommandBuffer.get(0));
         serialCommandBuffer.removeFirst();
       }
     }
 
     void readDataSetLEDs(String serialDataFromPC)
     {
-      serialDataFromPC.toCharArray(tempFullHexStorage, 128);
-
-      tempPartHexStorage[1] = 0;
-      tempPartHexStorage[2] = 0;
-      tempPartHexStorage[3] = 0;
-      tempPartHexStorage[4] = 0;
-      tempPartHexStorage[5] = 0;
-
-      tempPartHexStorage[0] = tempFullHexStorage[0];
-      HEX_VALUE[0] = strtoul(tempPartHexStorage, NULL, 16);
-      SliderToChange = HEX_VALUE[0];
-
-      // Serial.println("setting led strip " + String(SliderToChange));
-
-      tempPartHexStorage[0] = tempFullHexStorage[1];
-      HEX_VALUE[0] = strtoul(tempPartHexStorage, NULL, 16);
-      isAnimated = bool(HEX_VALUE[0]);
+      // Serial.println(serialDataFromPC);
+      
+      SliderToChange = strtol(serialDataFromPC.substring(0,1).c_str(), NULL, 16);
+      isAnimated = bool(strtol(serialDataFromPC.substring(1,2).c_str(), NULL, 16));
+      // Serial.println("setting led strip " + String(SliderToChange) + " and setting animation to " + String (isAnimated));
 
       for (int i = 0; i < 16; i++)
       {
-        for (int j = 0; j < 6; j++)
-        {
-          tempPartHexStorage[j] = tempFullHexStorage[2+(6*i+j)];
-          // Serial.println(tempPartHexStorage[j]);
-        }
-        // Serial.println(tempPartHexStorage);
-        HEX_VALUE[i] = strtoul(tempPartHexStorage, NULL, 16);
-        // Serial.println(HEX_VALUE[i]);
+        HEX_VALUE[i] = strtol(serialDataFromPC.substring(2+i*6, 8+i*6).c_str(), NULL, 16);
       }
 
       All_ColorPallete[SliderToChange] = 

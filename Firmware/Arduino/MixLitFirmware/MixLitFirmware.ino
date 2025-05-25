@@ -119,5 +119,10 @@ void loop()
     }
   }
 
+  if (stringToSendToSoftware != "")
+  {
+    Serial.println(stringToSendToSoftware);
+  }
+
   FastLED.show();
 }
