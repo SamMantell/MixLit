@@ -9,7 +9,7 @@ import 'package:mixlit/backend/serial/SerialPortReader.dart'
     show SerialPortReader;
 
 class SerialConnectionManager {
-  static const int BAUD_RATE = 115200;
+  static const int BAUD_RATE = 38400;
   static const int SCAN_TIMEOUT_MS = 200;
   static const String DEVICE_IDENTIFIER = "mixlit";
   static Uint8List DEVICE_IDENTIFICATION_REQUEST =
