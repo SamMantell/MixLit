@@ -34,8 +34,13 @@ class mixlit {
     String serialCommand;
     List<String> serialCommandBuffer;
 
+    uint8_t loadingValue = 0;
+    bool loadingUp = true;
+
     uint32_t HEX_VALUE[16];
     int SliderToChange;
+
+    String stringToSendToSoftware = "";
 
     CRGBPalette16 All_ColorPallete[NUM_OF_LED_STRIPS] = 
     {
@@ -142,5 +147,105 @@ class mixlit {
       };
 
       needsUpdate = true;
+    }
+
+    void initialize()
+    {
+      Serial.begin(38400);
+
+      for (int i = 0; i > NUM_OF_SLIDERS; i++)          pinMode(sliders[i], INPUT);
+      for (int i = 0; i > NUM_OF_POTENTIOMETERS; i++)   pinMode(potentiometers[i], INPUT);
+      for (int i = 0; i > NUM_OF_BUTTONS; i++)          pinMode(buttons[i], INPUT);
+
+      FastLED.addLeds<WS2812, 11, GRB>(leds[0], NUM_OF_LEDS_PER_STRIP);
+      FastLED.addLeds<WS2812, 10, GRB>(leds[1], NUM_OF_LEDS_PER_STRIP);
+      FastLED.addLeds<WS2812, 9, GRB>(leds[2], NUM_OF_LEDS_PER_STRIP);
+      FastLED.addLeds<WS2812, 8, GRB>(leds[3], NUM_OF_LEDS_PER_STRIP);
+      FastLED.addLeds<WS2812, 7, GRB>(leds[4], NUM_OF_LEDS_PER_STRIP);
+    }
+
+    void awaitConnection()
+    {
+      while (true)
+      {
+        if (Serial.available())
+        {
+          char c = Serial.read();
+            
+          if (c == 63)
+          {
+              Serial.println("mixlit");
+              FastLED.setBrightness(10);
+              delay(200);
+              return;
+          }
+        }
+
+        delay(50);
+        for (int i = 0; i < NUM_OF_SLIDERS; i++)
+        {
+          if (loadingUp)
+          {
+            loadingValue++;
+            if (loadingValue == 254) loadingUp = false;
+          }
+          else
+          {
+            loadingValue--;
+            if (loadingValue == 0) loadingUp = true;
+          }
+          
+          FastLED.setBrightness(loadingValue/8);
+          setLEDs(128, i);
+        }
+        FastLED.show();
+      }
+    }
+
+    void readStates()
+    {
+      for (int i = 0; i < NUM_OF_SLIDERS; i++)
+      {
+        currentSliderState[i] = 1023 - analogRead(sliders[i]);
+      }
+      for (int i = 0; i < NUM_OF_POTENTIOMETERS; i++)
+      {
+        currentPotentiometerState[i] =  analogRead(potentiometers[i]);
+      }
+      for (int i = 0; i < NUM_OF_BUTTONS; i++)
+      {
+        currentButtonState[i] = digitalRead(buttons[i]);
+      }
+    }
+
+    void denoiseAndBuildString()
+    {
+      stringToSendToSoftware = "";
+
+      for (int i = 0; i < NUM_OF_SLIDERS; i++)
+      {
+        if ((abs(currentSliderState[i] - previousSliderState[i]) > 5) || needsUpdate)
+        {
+          if (currentSliderState[i] > 1020)
+          {
+            currentSliderState[i] = 1023;
+          }
+          else if (currentSliderState[i] < 3)
+          {
+            currentSliderState[i] = 0;
+          }
+
+          setLEDs(currentSliderState[i], i);
+        }
+
+        if ((abs(currentSliderState[i] - previousSliderState[i]) > 5))
+        {
+          previousSliderState[i] = currentSliderState[i];
+          stringToSendToSoftware += i;
+          stringToSendToSoftware += "|";
+          stringToSendToSoftware += previousSliderState[i];
+          stringToSendToSoftware += "|";
+        }
+      }
     }
 };
