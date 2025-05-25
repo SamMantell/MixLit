@@ -51,6 +51,10 @@ class mixlit {
     int sliderToChange;
     bool needsUpdate;
 
+    bool isConnected;
+
+    String serialCommand;
+
     void setLEDs(int iCurrentValue, int ledStrip)
     {
       // if (isAnimated) colorIndexOffset++;
@@ -71,5 +75,75 @@ class mixlit {
           
         else                                                        leds[ledStrip][i] = ColorFromPalette( All_ColorPallete[ledStrip], ColorIndex, 0);
       }
+    }
+
+    void serialHandler()
+    {
+      while (Serial.available() > 0)
+      {
+        char incomingChar = Serial.read();
+        if (incomingChar != 10 && incomingChar != 63 && incomingChar != 33 && incomingChar != 32 && incomingChar != 9) serialCommand += incomingChar;
+        if (incomingChar == 33)
+        {
+          if (serialCommand == "")
+          {
+            Serial.println("ping");
+          }
+          else
+          {
+            Serial.println(serialCommand);
+            readDataSetLEDs(serialCommand);
+            serialCommand = "";
+          }
+        }
+      }
+    }
+
+    void readDataSetLEDs(String serialDataFromPC)
+    {
+      char tempFullHexStorage[128];
+      char tempPartHexStorage[6];
+      uint32_t HEX_VALUE[8];
+      int SliderToChange;
+
+      serialDataFromPC.toCharArray(tempFullHexStorage, 128);
+
+      tempPartHexStorage[1] = 0;
+      tempPartHexStorage[2] = 0;
+      tempPartHexStorage[3] = 0;
+      tempPartHexStorage[4] = 0;
+      tempPartHexStorage[5] = 0;
+
+      tempPartHexStorage[0] = tempFullHexStorage[0];
+      HEX_VALUE[0] = strtoul(tempPartHexStorage, NULL, 16);
+      SliderToChange = HEX_VALUE[0];
+
+      Serial.println("setting led strip " + String(SliderToChange));
+
+      tempPartHexStorage[0] = tempFullHexStorage[1];
+      HEX_VALUE[0] = strtoul(tempPartHexStorage, NULL, 16);
+      isAnimated = bool(HEX_VALUE[0]);
+
+      for (int i = 0; i < 16; i++)
+      {
+        for (int j = 0; j < 6; j++)
+        {
+          tempPartHexStorage[j] = tempFullHexStorage[2+(6*i+j)];
+          // Serial.println(tempPartHexStorage[j]);
+        }
+        // Serial.println(tempPartHexStorage);
+        HEX_VALUE[i] = strtoul(tempPartHexStorage, NULL, 16);
+        // Serial.println(HEX_VALUE[i]);
+      }
+
+      All_ColorPallete[SliderToChange] = 
+      {
+        CRGBPalette16   (
+                            HEX_VALUE[0], HEX_VALUE[1], HEX_VALUE[2],  HEX_VALUE[3], HEX_VALUE[4], HEX_VALUE[5], HEX_VALUE[6],  HEX_VALUE[7],
+                            HEX_VALUE[8], HEX_VALUE[9], HEX_VALUE[10],  HEX_VALUE[11], HEX_VALUE[12], HEX_VALUE[13], HEX_VALUE[14],  HEX_VALUE[15]
+                        )
+      };
+
+      needsUpdate = true;
     }
 };

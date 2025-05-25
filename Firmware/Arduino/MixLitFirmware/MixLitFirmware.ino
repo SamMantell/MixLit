@@ -14,10 +14,6 @@ This program is the firmware for the MixLit, it is responsible for taking slider
 
 mixlit mixlit;
 
-char tempFullHexStorage[128];
-char tempPartHexStorage[128];
-uint32_t HEX_VALUE[8];
-
 uint8_t loadingValue = 0;
 bool loadingUp = true;
 
@@ -27,7 +23,7 @@ String stringToSendToSoftware = "";
 
 void setup()
 {
-  Serial.begin(115200);
+  Serial.begin(38400);
 
   for (int i = 0; i > NUM_OF_SLIDERS; i++)          pinMode(mixlit.sliders[i], INPUT);
   for (int i = 0; i > NUM_OF_POTENTIOMETERS; i++)   pinMode(mixlit.potentiometers[i], INPUT);
@@ -80,14 +76,7 @@ void setup()
 
 void loop()
 {
-  if (Serial.available())
-  {
-    char c = Serial.read();
-    if (c == 63)
-    {
-        Serial.println("mixlit");
-    }
-  }
+  mixlit.serialHandler();
 
   stringToSendToSoftware = "";
 
@@ -106,7 +95,7 @@ void loop()
 
   for (int i = 0; i < NUM_OF_SLIDERS; i++)
   {
-    if ((abs(mixlit.currentSliderState[i] - mixlit.previousSliderState[i]) > 5))
+    if ((abs(mixlit.currentSliderState[i] - mixlit.previousSliderState[i]) > 5) || mixlit.needsUpdate)
     {
       if (mixlit.currentSliderState[i] > 1020)
       {
