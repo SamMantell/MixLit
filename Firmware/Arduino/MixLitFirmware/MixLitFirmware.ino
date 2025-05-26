@@ -10,7 +10,7 @@ This program is the firmware for the MixLit, it is responsible for taking slider
 */
 
 #include "definitions.h"
-#include "mixlit.h"
+#include "mixlit.hpp"
 
 mixlit mixlit;
 
