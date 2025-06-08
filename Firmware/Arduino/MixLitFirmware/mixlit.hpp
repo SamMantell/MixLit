@@ -247,5 +247,18 @@ class mixlit {
           stringToSendToSoftware += "|";
         }
       }
+
+      for (int i = 0; i < NUM_OF_BUTTONS; i++)
+      {
+        if (currentButtonState[i] != previousButtonState[i])
+        {
+          previousButtonState[i] = currentButtonState[i];
+
+          stringToSendToSoftware += buttonNames[i];
+          stringToSendToSoftware += "|";
+          stringToSendToSoftware += int(currentButtonState[i]);
+          stringToSendToSoftware += "|";
+        }
+      }
     }
 };
