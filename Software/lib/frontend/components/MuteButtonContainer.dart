@@ -11,7 +11,7 @@ class MuteButtonContainer extends StatelessWidget {
   final Function(int) onTapCancel;
 
   const MuteButtonContainer({
-    Key? key,
+    super.key,
     required this.containerWidth,
     required this.muteStates,
     required this.buttonAnimations,
@@ -19,7 +19,7 @@ class MuteButtonContainer extends StatelessWidget {
     required this.onTapDown,
     required this.onTapUp,
     required this.onTapCancel,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

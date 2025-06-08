@@ -1,17 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:mixlit/frontend/menu/dialog/warning.dart';
 
-class ConnectionHandler {
+class ConnectionHandler extends ChangeNotifier {
   bool hasShownInitialDialog = false;
-  bool isCurrentlyConnected = false;
+  bool _isCurrentlyConnected = false;
   bool isNotificationInProgress = false;
+
+  bool get isCurrentlyConnected => _isCurrentlyConnected;
 
   void showConnectionNotification(BuildContext context, bool connected) {
     if (isNotificationInProgress) return;
-    if (connected == isCurrentlyConnected) return;
+    if (connected == _isCurrentlyConnected) return;
 
     isNotificationInProgress = true;
-    isCurrentlyConnected = connected;
+    _isCurrentlyConnected = connected;
+    notifyListeners();
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -41,6 +44,9 @@ class ConnectionHandler {
       BuildContext context, Future<bool> initialConnectionState) {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final isConnected = await initialConnectionState;
+      _isCurrentlyConnected = isConnected;
+      notifyListeners();
+
       if (!isConnected && !hasShownInitialDialog) {
         hasShownInitialDialog = true;
         if (context.mounted) {
@@ -49,5 +55,10 @@ class ConnectionHandler {
         }
       }
     });
+  }
+
+  @override
+  void dispose() {
+    super.dispose();
   }
 }

@@ -4,8 +4,11 @@
 
 list(APPEND FLUTTER_PLUGIN_LIST
   flutter_libserialport
+  screen_retriever_windows
+  tray_manager
   url_launcher_windows
   win32audio
+  window_manager
   window_to_front
 )
 

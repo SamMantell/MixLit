@@ -8,13 +8,13 @@ class MuteButton extends StatelessWidget {
   final Function() onTapCancel;
 
   const MuteButton({
-    Key? key,
+    super.key,
     required this.isMuted,
     required this.animation,
     required this.onTapDown,
     required this.onTapUp,
     required this.onTapCancel,
-  }) : super(key: key);
+  });
 
   @override
   Widget build(BuildContext context) {

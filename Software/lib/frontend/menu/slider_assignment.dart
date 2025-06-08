@@ -111,15 +111,16 @@ Future<List<ProcessVolume?>> assignApplication(
                                   color: Colors.white,
                                 ),
                               ),
-                              subtitle: isAlreadyAssigned
-                                  ? Text(
-                                      'Already assigned to Slider ${assignedSliderIndex! + 1}',
-                                      style: TextStyle(
-                                        fontFamily: 'BitstreamVeraSans',
-                                        color: Colors.orange[200],
-                                      ),
-                                    )
-                                  : null,
+                              subtitle:
+                                  isAlreadyAssigned //TODO: remove entry instead
+                                      ? Text(
+                                          'Already assigned to Slider ${assignedSliderIndex! + 1}',
+                                          style: TextStyle(
+                                            fontFamily: 'BitstreamVeraSans',
+                                            color: Colors.orange[200],
+                                          ),
+                                        )
+                                      : null,
                               onTap: () {
                                 Navigator.pop(
                                     context, {'type': 'app', 'app': app});
@@ -271,5 +272,10 @@ Future<void> fetchAllAppIcons(
 
 String _formatAppName(String appName) {
   appName = appName.replaceAll('.exe', '');
+
+  if (appName.isEmpty) {
+    return 'Unknown';
+  }
+
   return appName[0].toUpperCase() + appName.substring(1);
 }

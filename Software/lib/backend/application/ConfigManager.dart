@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:path/path.dart' as path;
 import 'package:win32audio/win32audio.dart';
 import 'package:mixlit/backend/data/StorageManager.dart';
@@ -30,8 +29,8 @@ class ConfigManager {
     return port;
   }
 
-  void updateSliderConfig(int sliderIndex, String? processPath,
-      double volumeValue, String sliderTag, bool isMuted) {
+  void updateSliderConfig(
+      int sliderIndex, String? processPath, String sliderTag, bool isMuted) {
     if (_sliderConfigsCache.length <= sliderIndex) {
       _sliderConfigsCache = List.filled(8, null);
     }
@@ -44,7 +43,6 @@ class ConfigManager {
     // config map
     _sliderConfigsCache[sliderIndex] = {
       'processName': processName,
-      'volumeValue': volumeValue,
       'sliderTag': sliderTag,
       'isMuted': isMuted,
     };
@@ -148,14 +146,14 @@ class ConfigManager {
       await _loadSliderConfigsFromDisk();
     }
 
-    final sliderValues = List<double>.filled(8, 512); // Default to 50%
+    final sliderValues = List<double>.filled(8, 0.1);
     final sliderTags = List<String>.filled(8, TAG_UNASSIGNED);
     final muteStates = List<bool>.filled(8, false);
 
     for (var i = 0; i < _sliderConfigsCache.length; i++) {
       final config = _sliderConfigsCache[i];
       if (config != null) {
-        sliderValues[i] = config['volumeValue'] ?? 512;
+        sliderValues[i] = config['volumeValue'] ?? 10;
         sliderTags[i] = config['sliderTag'] ?? TAG_UNASSIGNED;
         muteStates[i] = config['isMuted'] ?? false;
       }
@@ -285,8 +283,7 @@ class ConfigManager {
         processPath = assignedApps[i]?.processPath;
       }
 
-      updateSliderConfig(
-          i, processPath, sliderValues[i], sliderTags[i], muteStates[i]);
+      updateSliderConfig(i, processPath, sliderTags[i], muteStates[i]);
     }
 
     await saveAllSliderConfigs();
@@ -295,8 +292,7 @@ class ConfigManager {
 
   Future<void> onApplicationAssigned(int sliderIndex, ProcessVolume app,
       double volume, String sliderTag, bool isMuted) async {
-    updateSliderConfig(
-        sliderIndex, app.processPath, volume, sliderTag, isMuted);
+    updateSliderConfig(sliderIndex, app.processPath, sliderTag, isMuted);
 
     await saveAllSliderConfigs();
     print('Application assigned to slider $sliderIndex and saved to disk');
@@ -304,7 +300,7 @@ class ConfigManager {
 
   Future<void> onSpecialSliderAssigned(
       int sliderIndex, String specialTag, double volume, bool isMuted) async {
-    updateSliderConfig(sliderIndex, null, volume, specialTag, isMuted);
+    updateSliderConfig(sliderIndex, null, specialTag, isMuted);
 
     await saveAllSliderConfigs();
     print(

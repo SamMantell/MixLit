@@ -159,7 +159,7 @@ class SerialWorker {
       final parts = line.split('|');
       if (parts.isEmpty) return;
 
-      if (parts.length > 0 &&
+      if (parts.isNotEmpty &&
           parts[0].length == 1 &&
           parts[0].codeUnitAt(0) >= 'A'.codeUnitAt(0) &&
           parts[0].codeUnitAt(0) <= 'E'.codeUnitAt(0)) {
@@ -212,6 +212,7 @@ class SerialWorker {
         return;
       }
 
+      print(command);
       _rawDataController.add(command);
 
       await _sendToDevice(command);
@@ -222,12 +223,13 @@ class SerialWorker {
 
   Future<void> _sendToDevice(String data) async {
     try {
+      data = "0$data";
       final bytes = data.codeUnits;
 
       if (_connectionManager.isConnected) {
         final success = await _connectionManager.writeToPort(bytes);
         if (success) {
-          //print('Data sent to device: $data');
+          print('Data sent to device: $data');
         } else {
           throw Exception('Failed to write to port');
         }

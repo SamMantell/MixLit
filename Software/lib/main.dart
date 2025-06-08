@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:mixlit/frontend/home_page.dart';
 import 'package:mixlit/frontend/theme/app_theme.dart';
+import 'package:window_manager/window_manager.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await windowManager.ensureInitialized();
+  windowManager.setPreventClose(true);
   runApp(const MyApp());
 }
 

@@ -59,4 +59,6 @@ class VolumeController {
       applicationManager.sliderValues[sliderId] = value;
     }
   }
+
+  void dispose() {}
 }
