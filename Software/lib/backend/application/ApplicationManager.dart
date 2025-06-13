@@ -85,9 +85,9 @@ class ApplicationManager {
                 'Restoring volume for slider $i: value=$volumeValue, muted=$isMuted');
 
             if (isMuted) {
-              adjustVolume(i, 0.0001);
+              adjustVolume(i, 0.0001, fromRestore: true);
             } else {
-              adjustVolume(i, volumeValue);
+              adjustVolume(i, volumeValue, fromRestore: true);
             }
           } else {
             print(
@@ -103,9 +103,9 @@ class ApplicationManager {
           final isMuted = muteStates[i];
 
           if (isMuted) {
-            adjustDeviceVolume(0.0001);
+            adjustDeviceVolume(0.0001, fromRestore: true);
           } else {
-            adjustDeviceVolume(volumeValue);
+            adjustDeviceVolume(volumeValue, fromRestore: true);
           }
         } else if (sliderTag == ConfigManager.TAG_ACTIVE_APP) {
           print('Restored active app control for slider $i');
@@ -162,7 +162,8 @@ class ApplicationManager {
         sliderValues[sliderIndex], muteStates[sliderIndex]);
   }
 
-  void adjustVolume(int sliderIndex, double sliderValue) {
+  void adjustVolume(int sliderIndex, double sliderValue,
+      {bool fromRestore = false}) {
     sliderValues[sliderIndex] = sliderValue;
 
     _pendingAppVolumes[sliderIndex] = sliderValue;
@@ -171,11 +172,16 @@ class ApplicationManager {
 
     final app = assignedApplications[sliderIndex];
     if (app != null) {
-      _configManager.updateSliderConfig(sliderIndex, app.processPath,
-          sliderTags[sliderIndex], muteStates[sliderIndex]);
-    } else {
+      //auto-detect mute state if NOT restoring
+      bool muteState =
+          fromRestore ? muteStates[sliderIndex] : (sliderValue <= 0.009);
       _configManager.updateSliderConfig(
-          sliderIndex, null, sliderTags[sliderIndex], muteStates[sliderIndex]);
+          sliderIndex, app.processPath, sliderTags[sliderIndex], muteState);
+    } else {
+      bool muteState =
+          fromRestore ? muteStates[sliderIndex] : (sliderValue <= 0.009);
+      _configManager.updateSliderConfig(
+          sliderIndex, null, sliderTags[sliderIndex], muteState);
     }
   }
 
@@ -205,8 +211,6 @@ class ApplicationManager {
       if (appProcess != null) {
         double volumeLevel = sliderValue / 1024;
         _configManager.adjustVolumeForAllInstances(appProcess, volumeLevel);
-
-        muteStates[sliderIndex] = volumeLevel <= 0.009;
       }
     });
     _pendingAppVolumes.clear();
@@ -219,18 +223,15 @@ class ApplicationManager {
       for (var i = 0; i < sliderTags.length; i++) {
         if (sliderTags[i] == ConfigManager.TAG_DEFAULT_DEVICE ||
             sliderTags[i] == ConfigManager.TAG_MASTER_VOLUME) {
-          muteStates[i] = volumeLevel <= 1;
-
           _configManager.updateSliderConfig(
               i, null, sliderTags[i], muteStates[i]);
-
           break;
         }
       }
     }
   }
 
-  void adjustDeviceVolume(double sliderValue) {
+  void adjustDeviceVolume(double sliderValue, {bool fromRestore = false}) {
     _pendingDeviceVolume = sliderValue;
     _scheduleVolumeUpdate();
 
@@ -238,8 +239,15 @@ class ApplicationManager {
       if (sliderTags[i] == ConfigManager.TAG_DEFAULT_DEVICE ||
           sliderTags[i] == ConfigManager.TAG_MASTER_VOLUME) {
         sliderValues[i] = sliderValue;
-        _configManager.updateSliderConfig(
-            i, null, sliderTags[i], sliderValue <= 0.009);
+
+        //auto-detect mute state if NOT restoring from saved config
+        if (!fromRestore) {
+          _configManager.updateSliderConfig(
+              i, null, sliderTags[i], sliderValue <= 0.009);
+        } else {
+          _configManager.updateSliderConfig(
+              i, null, sliderTags[i], muteStates[i]);
+        }
         break;
       }
     }

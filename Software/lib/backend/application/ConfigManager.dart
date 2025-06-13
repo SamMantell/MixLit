@@ -30,7 +30,8 @@ class ConfigManager {
   }
 
   void updateSliderConfig(
-      int sliderIndex, String? processPath, String sliderTag, bool isMuted) {
+      int sliderIndex, String? processPath, String sliderTag, bool isMuted,
+      {double? volumeValue}) {
     if (_sliderConfigsCache.length <= sliderIndex) {
       _sliderConfigsCache = List.filled(8, null);
     }
@@ -40,18 +41,15 @@ class ConfigManager {
       processName = extractProcessName(processPath);
     }
 
-    // config map
+    //TODO: Store actual value in config properly??
     _sliderConfigsCache[sliderIndex] = {
       'processName': processName,
       'sliderTag': sliderTag,
       'isMuted': isMuted,
+      'volumeValue': volumeValue,
     };
 
     _sliderConfigsDirty = true;
-
-    // Debug: Print updated configuration
-    //print(
-    //    'Updated slider $sliderIndex config: ${_sliderConfigsCache[sliderIndex]}');
   }
 
   Future<void> saveAllSliderConfigs() async {
@@ -146,14 +144,14 @@ class ConfigManager {
       await _loadSliderConfigsFromDisk();
     }
 
-    final sliderValues = List<double>.filled(8, 0.1);
+    final sliderValues = List<double>.filled(8, 100.0);
     final sliderTags = List<String>.filled(8, TAG_UNASSIGNED);
     final muteStates = List<bool>.filled(8, false);
 
     for (var i = 0; i < _sliderConfigsCache.length; i++) {
       final config = _sliderConfigsCache[i];
       if (config != null) {
-        sliderValues[i] = config['volumeValue'] ?? 10;
+        sliderValues[i] = config['volumeValue'] ?? 0.0;
         sliderTags[i] = config['sliderTag'] ?? TAG_UNASSIGNED;
         muteStates[i] = config['isMuted'] ?? false;
       }

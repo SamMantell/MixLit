@@ -293,8 +293,6 @@ class _HomePageState extends State<HomePage>
   void _handleVolumeAdjustment(int sliderId, double value) {
     _sliderValues[sliderId] = value;
 
-    //_ledController.updateSliderValue(sliderId, value);
-
     _muteButtonController.updatePreviousVolumeValue(sliderId, value);
 
     if (!_muteButtonController.muteStates[sliderId]) {
@@ -304,6 +302,10 @@ class _HomePageState extends State<HomePage>
     } else {
       _volumeController.storeVolumeValue(sliderId, value);
     }
+
+    //TODO: save volume to config
+    _applicationManager.updateSliderConfig(
+        sliderId, value, _muteButtonController.muteStates[sliderId]);
 
     _uiUpdater.requestUpdate();
   }
@@ -327,6 +329,11 @@ class _HomePageState extends State<HomePage>
     }
 
     _muteButtonController.toggleMuteState(index);
+
+    //saves mute state
+    _applicationManager.updateSliderConfig(
+        index, _sliderValues[index], _muteButtonController.muteStates[index]);
+
     _uiUpdater.requestUpdate();
   }
 
@@ -420,208 +427,285 @@ class _HomePageState extends State<HomePage>
     await Updater().checkAndShowUpdateDialog(context);
   }
 
+  void _onSettingsPressed() {
+    print('*something productive happened here*');
+  }
+
+  void _onClosePressed() {
+    windowManager.hide();
+  }
+
   @override
   Widget build(BuildContext context) {
     final bool isDarkMode = Theme.of(context).brightness == Brightness.dark;
     if (!_configLoaded) {
-      return Scaffold(
-        backgroundColor:
-            isDarkMode ? const Color(0xFF1E1E1E) : const Color(0xFFF5F5F5),
-        body: const Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              CircularProgressIndicator(),
-              SizedBox(height: 20),
-              Text(
-                'Loading configuration...',
-                style: TextStyle(
-                  fontFamily: 'BitstreamVeraSans',
+      return DragToMoveArea(
+        child: Scaffold(
+          backgroundColor:
+              isDarkMode ? const Color(0xFF1E1E1E) : const Color(0xFFF5F5F5),
+          body: const Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 20),
+                Text(
+                  'Loading configuration...',
+                  style: TextStyle(fontFamily: 'BitstreamVeraSans'),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       );
     }
 
-    return Scaffold(
-      backgroundColor: isDarkMode
-          ? const Color(0xFF1E1E1E)
-          : const Color.fromARGB(255, 214, 214, 214),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  const Expanded(child: SizedBox()),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Image.asset(
-                        'lib/frontend/assets/images/logo/mixlit_full.png',
-                        height: 60,
-                        fit: BoxFit.contain,
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'Volume Mixer Thingy Majig 9000',
-                        style: TextStyle(
-                          fontFamily: 'BitstreamVeraSans',
-                          fontSize: 22,
-                          fontWeight: FontWeight.w100,
-                          letterSpacing: 1,
-                          color: isDarkMode
-                              ? Colors.white
-                              : const Color.fromARGB(255, 92, 92, 92),
-                        ),
-                      ),
-                    ],
-                  ),
-                  Expanded(
-                    child: Align(
-                      alignment: Alignment.centerRight,
-                      child: ListenableBuilder(
-                        listenable: _connectionHandler,
-                        builder: (context, child) {
-                          return Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 16, vertical: 8),
-                            decoration: BoxDecoration(
-                              color: _connectionHandler.isCurrentlyConnected
-                                  ? Colors.green.withOpacity(0.1)
-                                  : Colors.red.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(30),
-                              border: Border.all(
+    return DragToMoveArea(
+      child: Scaffold(
+        backgroundColor: isDarkMode
+            ? const Color(0xFF1E1E1E)
+            : const Color.fromARGB(255, 214, 214, 214),
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    SizedBox(
+                      width: 150,
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: ListenableBuilder(
+                          listenable: _connectionHandler,
+                          builder: (context, child) {
+                            return Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 16, vertical: 8),
+                              decoration: BoxDecoration(
                                 color: _connectionHandler.isCurrentlyConnected
-                                    ? Colors.green.withOpacity(0.3)
-                                    : Colors.red.withOpacity(0.3),
-                              ),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  _connectionHandler.isCurrentlyConnected
-                                      ? Icons.usb_rounded
-                                      : Icons.usb_off_rounded,
+                                    ? Colors.green.withOpacity(0.1)
+                                    : Colors.red.withOpacity(0.1),
+                                borderRadius: BorderRadius.circular(30),
+                                border: Border.all(
                                   color: _connectionHandler.isCurrentlyConnected
-                                      ? Colors.green
-                                      : Colors.red,
-                                  size: 18,
+                                      ? Colors.green.withOpacity(0.3)
+                                      : Colors.red.withOpacity(0.3),
                                 ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  _connectionHandler.isCurrentlyConnected
-                                      ? 'Connected'
-                                      : 'Disconnected',
-                                  style: TextStyle(
-                                    fontFamily: 'BitstreamVeraSans',
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    _connectionHandler.isCurrentlyConnected
+                                        ? Icons.usb_rounded
+                                        : Icons.usb_off_rounded,
                                     color:
                                         _connectionHandler.isCurrentlyConnected
                                             ? Colors.green
                                             : Colors.red,
-                                    fontWeight: FontWeight.w500,
+                                    size: 18,
                                   ),
-                                ),
-                              ],
-                            ),
-                          );
-                        },
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    _connectionHandler.isCurrentlyConnected
+                                        ? 'Connected'
+                                        : 'Disconnected',
+                                    style: TextStyle(
+                                      fontFamily: 'BitstreamVeraSans',
+                                      color: _connectionHandler
+                                              .isCurrentlyConnected
+                                          ? Colors.green
+                                          : Colors.red,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
                       ),
                     ),
-                  ),
-                ],
-              ),
 
-              const SizedBox(height: 24),
+                    // Center logo and title
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Image.asset(
+                            'lib/frontend/assets/images/logo/mixlit_full.png',
+                            height: 60,
+                            fit: BoxFit.contain,
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Volume Mixer Thingy Majig 9000',
+                            style: TextStyle(
+                              fontFamily: 'BitstreamVeraSans',
+                              fontSize: 22,
+                              fontWeight: FontWeight.w100,
+                              letterSpacing: 1,
+                              color: isDarkMode
+                                  ? Colors.white
+                                  : const Color.fromARGB(255, 92, 92, 92),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
 
-              // Main content with sliders in a horizontal layout
-              Expanded(
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: List.generate(5, (index) {
-                    final bool isMuted =
-                        _muteButtonController.muteStates[index];
-                    final int volumePercentage =
-                        (_sliderValues[index] / 1024 * 100).round();
+                    //Settings and close button
+                    SizedBox(
+                      width: 150,
+                      child: Align(
+                        alignment: Alignment.centerRight,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // Settings button
+                            Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                onTap: _onSettingsPressed,
+                                borderRadius: BorderRadius.circular(20),
+                                child: Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: isDarkMode
+                                        ? Colors.white.withOpacity(0.1)
+                                        : Colors.black.withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(
+                                      color: isDarkMode
+                                          ? Colors.white.withOpacity(0.2)
+                                          : Colors.black.withOpacity(0.2),
+                                    ),
+                                  ),
+                                  child: Icon(
+                                    Icons.settings,
+                                    color: isDarkMode
+                                        ? Colors.white.withOpacity(0.8)
+                                        : Colors.black.withOpacity(0.8),
+                                    size: 20,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            //Close button
+                            Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                onTap: _onClosePressed,
+                                borderRadius: BorderRadius.circular(20),
+                                child: Container(
+                                  padding: const EdgeInsets.all(8),
+                                  decoration: BoxDecoration(
+                                    color: Colors.red.withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(
+                                      color: Colors.red.withOpacity(0.3),
+                                    ),
+                                  ),
+                                  child: Icon(
+                                    Icons.close,
+                                    color: Colors.red.withOpacity(0.8),
+                                    size: 20,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
 
-                    // Determine icon, title and colors based on assignment
-                    Widget? iconWidget;
-                    String title;
-                    Color primaryColor;
-                    final String sliderTag = _sliderTags[index];
+                const SizedBox(height: 24),
 
-                    if (sliderTag == ConfigManager.TAG_DEFAULT_DEVICE) {
-                      iconWidget = const Icon(Icons.speaker,
-                          color: Colors.white, size: 32);
-                      title = 'Device';
-                      primaryColor = Colors.blue;
-                    } else if (sliderTag == ConfigManager.TAG_MASTER_VOLUME) {
-                      iconWidget = const Icon(Icons.volume_up,
-                          color: Colors.white, size: 32);
-                      title = 'Master\nVolume';
-                      primaryColor = Colors.green;
-                    } else if (sliderTag == ConfigManager.TAG_ACTIVE_APP) {
-                      iconWidget = const Icon(Icons.app_registration,
-                          color: Colors.white, size: 32);
-                      title = 'Active\nApp';
-                      primaryColor = Colors.purple;
-                    } else if (sliderTag == ConfigManager.TAG_APP &&
-                        _assignedApps[index] != null) {
-                      final appPath = _assignedApps[index]!.processPath;
-                      if (_appIcons.containsKey(appPath) &&
-                          _appIcons[appPath] != null) {
-                        iconWidget =
-                            ApplicationIcon(iconData: _appIcons[appPath]!);
-                      } else {
-                        iconWidget = const Icon(Icons.apps,
+                //Sliders
+                Expanded(
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: List.generate(5, (index) {
+                      final bool isMuted =
+                          _muteButtonController.muteStates[index];
+                      final int volumePercentage =
+                          (_sliderValues[index] / 1024 * 100).round();
+
+                      Widget? iconWidget;
+                      String title;
+                      Color primaryColor;
+                      final String sliderTag = _sliderTags[index];
+
+                      if (sliderTag == ConfigManager.TAG_DEFAULT_DEVICE) {
+                        iconWidget = const Icon(Icons.speaker,
                             color: Colors.white, size: 32);
+                        title = 'Device';
+                        primaryColor = Colors.blue;
+                      } else if (sliderTag == ConfigManager.TAG_MASTER_VOLUME) {
+                        iconWidget = const Icon(Icons.volume_up,
+                            color: Colors.white, size: 32);
+                        title = 'Master\nVolume';
+                        primaryColor = Colors.green;
+                      } else if (sliderTag == ConfigManager.TAG_ACTIVE_APP) {
+                        iconWidget = const Icon(Icons.app_registration,
+                            color: Colors.white, size: 32);
+                        title = 'Active\nApp';
+                        primaryColor = Colors.purple;
+                      } else if (sliderTag == ConfigManager.TAG_APP &&
+                          _assignedApps[index] != null) {
+                        final appPath = _assignedApps[index]!.processPath;
+                        if (_appIcons.containsKey(appPath) &&
+                            _appIcons[appPath] != null) {
+                          iconWidget =
+                              ApplicationIcon(iconData: _appIcons[appPath]!);
+                        } else {
+                          iconWidget = const Icon(Icons.apps,
+                              color: Colors.white, size: 32);
+                        }
+
+                        final appName =
+                            _assignedApps[index]!.processPath.split(r'\').last;
+                        title = appName.replaceAll('.exe', '');
+                        title = title[0].toUpperCase() + title.substring(1);
+
+                        primaryColor = Colors.amber;
+                      } else {
+                        iconWidget = const Icon(Icons.add_circle_outline,
+                            color: Colors.white, size: 32);
+                        title = 'N/A';
+                        primaryColor = Colors.grey;
                       }
 
-                      final appName =
-                          _assignedApps[index]!.processPath.split(r'\').last;
-                      title = appName.replaceAll('.exe', '');
-                      // Capitalize first letter
-                      title = title[0].toUpperCase() + title.substring(1);
-
-                      primaryColor = Colors.amber;
-                    } else {
-                      iconWidget = const Icon(Icons.add_circle_outline,
-                          color: Colors.white, size: 32);
-                      title = 'N/A';
-                      primaryColor = Colors.grey;
-                    }
-
-                    return VerticalSliderCard(
-                      title: title,
-                      iconWidget: iconWidget,
-                      value:
-                          _sliderValues[index] / 1024, // Normalize to 0.0-1.0
-                      isMuted: isMuted,
-                      isActive: sliderTag != ConfigManager.TAG_UNASSIGNED,
-                      percentage: volumePercentage,
-                      accentColor: _sliderColors[index] ??
-                          (sliderTag == ConfigManager.TAG_APP
-                              ? _defaultAppColor
-                              : _unassignedColor),
-                      onSliderChanged: (value) {
-                        final scaledValue =
-                            value * 1024; // Scale back to original range
-                        _handleVolumeAdjustment(index, scaledValue);
-                      },
-                      onMutePressed: () => _toggleMute(index),
-                      onTap: () => _selectApp(index),
-                      isDarkMode: isDarkMode,
-                    );
-                  }),
+                      return VerticalSliderCard(
+                        title: title,
+                        iconWidget: iconWidget,
+                        value: _sliderValues[index] / 1024,
+                        isMuted: isMuted,
+                        isActive: sliderTag != ConfigManager.TAG_UNASSIGNED,
+                        percentage: volumePercentage,
+                        accentColor: _sliderColors[index] ??
+                            (sliderTag == ConfigManager.TAG_APP
+                                ? _defaultAppColor
+                                : _unassignedColor),
+                        onSliderChanged: (value) {
+                          final scaledValue = value * 1024;
+                          _handleVolumeAdjustment(index, scaledValue);
+                        },
+                        onMutePressed: () => _toggleMute(index),
+                        onTap: () => _selectApp(index),
+                        isDarkMode: isDarkMode,
+                      );
+                    }),
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

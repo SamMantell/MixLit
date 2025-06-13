@@ -61,7 +61,7 @@ class VolumeController {
   }
 
   void adjustVolume(int sliderId, double value,
-      {bool bypassRateLimit = false}) {
+      {bool bypassRateLimit = false, bool fromRestore = false}) {
     applicationManager.sliderValues[sliderId] = value;
 
     if (isSliderMuted(sliderId) && value > muteVolume) {
@@ -70,7 +70,7 @@ class VolumeController {
     }
 
     if (value <= muteVolume || bypassRateLimit) {
-      directVolumeAdjustment(sliderId, value);
+      directVolumeAdjustment(sliderId, value, fromRestore: fromRestore);
       return;
     }
 
@@ -102,14 +102,15 @@ class VolumeController {
 
     changes.forEach((sliderId, value) {
       if (!isSliderMuted(sliderId) || value <= muteVolume) {
-        directVolumeAdjustment(sliderId, value);
+        directVolumeAdjustment(sliderId, value, fromRestore: false);
       } else {
         storeVolumeValue(sliderId, value);
       }
     });
   }
 
-  Future<void> directVolumeAdjustment(int sliderId, double value) async {
+  Future<void> directVolumeAdjustment(int sliderId, double value,
+      {bool fromRestore = false}) async {
     final tag = sliderTags[sliderId];
 
     if (tag == ConfigManager.TAG_DEFAULT_DEVICE ||
@@ -150,7 +151,10 @@ class VolumeController {
       applicationManager.sliderValues[sliderId] = value;
     }
 
-    applicationManager.updateSliderConfig(sliderId, value, value <= muteVolume);
+    // Only auto-detect mute state if NOT restoring from config
+    bool isMuted =
+        fromRestore ? _muteStates[sliderId] ?? false : (value <= muteVolume);
+    applicationManager.updateSliderConfig(sliderId, value, isMuted);
   }
 
   Future<void> setMuteState(int sliderId, bool isMuted) async {

@@ -306,7 +306,7 @@ class SerialConnectionManager {
 
       for (var i = 0; i < 3 && !completer.isCompleted; i++) {
         print('Sending verification request attempt ${i + 1}...');
-        port.write(Uint8List.fromList('?\n'.codeUnits));
+        port.write(DEVICE_IDENTIFICATION_REQUEST);
         port.flush();
         await Future.delayed(const Duration(milliseconds: 200));
       }
