@@ -6,7 +6,7 @@
 class mixlit {
   public:
     const int sliders[NUM_OF_SLIDERS] = {A4, A3, A2, A1, A0};
-    const int potentiometers[NUM_OF_POTENTIOMETERS] = {A5, A7, A6};
+    const int potentiometers[NUM_OF_POTENTIOMETERS] = {/*A5, */A7, A6};
     const int ledStrips[NUM_OF_LED_STRIPS] = {11, 10, 9, 8, 7};
     const int buttons[NUM_OF_BUTTONS] = {6, 5, 4, 3, 2};
     const String buttonNames[NUM_OF_BUTTONS] = {"A", "B", "C", "D", "E"};
@@ -45,23 +45,23 @@ class mixlit {
     CRGBPalette16 All_ColorPallete[NUM_OF_LED_STRIPS] = 
     {
       CRGBPalette16   (
-                        0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF,
+                        0xfffdf0, 0xfffbde, 0xfff8cd,  0xfff5bb, 0xfff3a9, 0xfff096, 0xffed84,  0xffea70,
                         0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF
                       ),
       CRGBPalette16   (
-                        0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF, 0xFFFFFF, 0xFF0000, 0xFF0000,  0xFF0000,
+                        0xea81b2, 0xeb7eb1, 0xed7ab0,  0xee77af, 0xef73ae, 0xf170ad, 0xf26cac,  0xf368ab,
                         0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF
                       ),
       CRGBPalette16   (
-                        0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF, 0xFFFFFF, 0x00FF00, 0x00FF00,  0x00FF00,
+                        0x917cbb, 0x8a76b9, 0x8371b7,  0x7b6cb5, 0x7367b3, 0x6b62b1, 0x625daf,  0x5958ad,
                         0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF
                       ),
       CRGBPalette16   (
-                        0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF, 0xFFFFFF, 0x0000FF, 0x0000FF,  0x0000FF,
+                        0x797edc, 0x6f79d8, 0x6574d4,  0x5a6fcf, 0x4e6acb, 0x4165c7, 0x3260c2,  0x1e5bbe,
                         0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF
                       ),
       CRGBPalette16   (
-                        0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF, 0xFFFFFF, 0xFF00FF, 0xFF00FF,  0xFF00FF,
+                        0xa96ae0, 0xa96ae0, 0xa96ae0,  0xa96ae0, 0xa96ae0, 0xa96ae0, 0xa96ae0,  0xa96ae0,
                         0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF
                       )
     };
@@ -175,7 +175,7 @@ class mixlit {
           if (c == 63)
           {
               Serial.println("mixlit");
-              FastLED.setBrightness(10);
+              FastLED.setBrightness(16);
               delay(200);
               return;
           }
@@ -238,12 +238,35 @@ class mixlit {
           setLEDs(currentSliderState[i], i);
         }
 
-        if ((abs(currentSliderState[i] - previousSliderState[i]) > 5))
+        if ((abs(currentSliderState[i] - previousSliderState[i]) > 5 || needsUpdate))
         {
           previousSliderState[i] = currentSliderState[i];
           stringToSendToSoftware += i;
           stringToSendToSoftware += "|";
           stringToSendToSoftware += previousSliderState[i];
+          stringToSendToSoftware += "|";
+        }
+      }
+
+      for (int i = 0; i < NUM_OF_POTENTIOMETERS; i++)
+      {
+        if ((abs(currentPotentiometerState[i] - previousPotentiometerState[i]) > 5))
+        {
+          if (currentPotentiometerState[i] > 1020)
+          {
+            currentPotentiometerState[i] = 1023;
+          }
+          else if (currentPotentiometerState[i] < 3)
+          {
+            currentPotentiometerState[i] = 0;
+          }
+        }
+        if ((abs(currentPotentiometerState[i] - previousPotentiometerState[i]) > 5))
+        {
+          previousPotentiometerState[i] = currentPotentiometerState[i];
+          stringToSendToSoftware += (i + NUM_OF_SLIDERS);
+          stringToSendToSoftware += "|";
+          stringToSendToSoftware += previousPotentiometerState[i];
           stringToSendToSoftware += "|";
         }
       }
