@@ -6,7 +6,7 @@
 class mixlit {
   public:
     const int sliders[NUM_OF_SLIDERS] = {A4, A3, A2, A1, A0};
-    const int potentiometers[NUM_OF_POTENTIOMETERS] = {/*A5, */A7, A6};
+    const int potentiometers[NUM_OF_POTENTIOMETERS] = {A5, A7, A6};
     const int ledStrips[NUM_OF_LED_STRIPS] = {11, 10, 9, 8, 7};
     const int buttons[NUM_OF_BUTTONS] = {6, 5, 4, 3, 2};
     const String buttonNames[NUM_OF_BUTTONS] = {"A", "B", "C", "D", "E"};
