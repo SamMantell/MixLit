@@ -1,3 +1,6 @@
+import 'dart:io';
+import 'dart:typed_data';
+import 'package:mixlit/backend/application/util/IconExtractor.dart';
 import 'package:path/path.dart' as path;
 import 'package:win32audio/win32audio.dart';
 import 'package:mixlit/backend/data/StorageManager.dart';
@@ -17,6 +20,177 @@ class ConfigManager {
   static const String TAG_MASTER_VOLUME = 'mixlit.master';
   static const String TAG_ACTIVE_APP = 'mixlit.active';
   static const String TAG_UNASSIGNED = 'unassigned';
+
+  //icon caching
+  String? _iconCachePath;
+  final Map<String, String> _iconPathCache = {};
+
+  Future<String> get _getIconCachePath async {
+    if (_iconCachePath != null) return _iconCachePath!;
+
+    final configPath = await _storageManager.getConfigPath();
+    _iconCachePath = path.join(configPath, '.cache');
+
+    final cacheDir = Directory(_iconCachePath!);
+    if (!await cacheDir.exists()) {
+      await cacheDir.create(recursive: true);
+      print('Created icon cache directory: $_iconCachePath');
+    }
+
+    return _iconCachePath!;
+  }
+
+  Future<void> cacheAppIcon(String processPath) async {
+    try {
+      final processName = extractProcessName(processPath);
+      final normalizedName = normalizeProcessName(processName);
+
+      if (_iconPathCache.containsKey(normalizedName)) {
+        print('Icon already cached for $processName');
+        return;
+      }
+
+      final cachePath = await _getIconCachePath;
+      final iconFileName = '${normalizedName}_icon.ico';
+      final cachedIconPath = path.join(cachePath, iconFileName);
+
+      if (await File(cachedIconPath).exists()) {
+        _iconPathCache[normalizedName] = cachedIconPath;
+        print('Found existing cached icon for $processName at $cachedIconPath');
+        return;
+      }
+
+      if (Platform.isWindows && await File(processPath).exists()) {
+        final iconData = await _extractWindowsIcon(processPath);
+        if (iconData != null) {
+          await File(cachedIconPath).writeAsBytes(iconData);
+          _iconPathCache[normalizedName] = cachedIconPath;
+          print('Cached icon for $processName at $cachedIconPath');
+        }
+      }
+    } catch (e) {
+      print('Error caching icon for $processPath: $e');
+    }
+  }
+
+  Future<Uint8List?> _extractWindowsIcon(String executablePath) async {
+    try {
+      final processName = extractProcessName(executablePath);
+      final normalizedName = normalizeProcessName(processName);
+      final cachePath = await _getIconCachePath;
+      final iconFileName = '${normalizedName}_icon.ico';
+      final cachedIconPath = path.join(cachePath, iconFileName);
+
+      final success =
+          await IconExtractor.extractIconToFile(executablePath, cachedIconPath);
+
+      if (success) {
+        final iconData = await File(cachedIconPath).readAsBytes();
+        return Uint8List.fromList(iconData);
+      }
+
+      return null;
+    } catch (e) {
+      print('Error extracting icon from $executablePath: $e');
+      return null;
+    }
+  }
+
+  Future<String?> getCachedIconPath(String processPath) async {
+    final processName = extractProcessName(processPath);
+    final normalizedName = normalizeProcessName(processName);
+
+    if (_iconPathCache.containsKey(normalizedName)) {
+      final cachedPath = _iconPathCache[normalizedName]!;
+      if (await File(cachedPath).exists()) {
+        return cachedPath;
+      } else {
+        _iconPathCache.remove(normalizedName);
+      }
+    }
+
+    final cachePath = await _getIconCachePath;
+    final iconFileName = '${normalizedName}_icon.ico';
+    final cachedIconPath = path.join(cachePath, iconFileName);
+
+    if (await File(cachedIconPath).exists()) {
+      _iconPathCache[normalizedName] = cachedIconPath;
+      return cachedIconPath;
+    }
+
+    return null;
+  }
+
+  Future<String?> getCachedIconByProcessName(String processName) async {
+    final normalizedName = normalizeProcessName(processName);
+
+    if (_iconPathCache.containsKey(normalizedName)) {
+      final cachedPath = _iconPathCache[normalizedName]!;
+      if (await File(cachedPath).exists()) {
+        return cachedPath;
+      } else {
+        _iconPathCache.remove(normalizedName);
+      }
+    }
+
+    final cachePath = await _getIconCachePath;
+    final iconFileName = '${normalizedName}_icon.ico';
+    final cachedIconPath = path.join(cachePath, iconFileName);
+
+    if (await File(cachedIconPath).exists()) {
+      _iconPathCache[normalizedName] = cachedIconPath;
+      return cachedIconPath;
+    }
+
+    return null;
+  }
+
+  Future<void> clearIconCache() async {
+    try {
+      final cachePath = await _getIconCachePath;
+      final cacheDir = Directory(cachePath);
+
+      if (await cacheDir.exists()) {
+        await for (final entity in cacheDir.list()) {
+          if (entity is File && entity.path.endsWith('_icon.ico')) {
+            await entity.delete();
+          }
+        }
+        _iconPathCache.clear();
+        print('Icon cache cleared');
+      }
+    } catch (e) {
+      print('Error clearing icon cache: $e');
+    }
+  }
+
+  Future<void> cleanupUnusedIcons(List<String> activeProcPaths) async {
+    try {
+      final activeProcessNames = activeProcPaths
+          .map((path) => normalizeProcessName(extractProcessName(path)))
+          .toSet();
+
+      final cachePath = await _getIconCachePath;
+      final cacheDir = Directory(cachePath);
+
+      if (await cacheDir.exists()) {
+        await for (final entity in cacheDir.list()) {
+          if (entity is File && entity.path.endsWith('_icon.ico')) {
+            final fileName = path.basenameWithoutExtension(entity.path);
+            final processName = fileName.replaceAll('_icon', '');
+
+            if (!activeProcessNames.contains(processName)) {
+              await entity.delete();
+              _iconPathCache.remove(processName);
+              print('Removed unused icon cache for $processName');
+            }
+          }
+        }
+      }
+    } catch (e) {
+      print('Error cleaning up unused icons: $e');
+    }
+  }
 
   Future<void> saveLastComPort(String portName) async {
     await _storageManager.saveData('last-com-port', portName);
@@ -41,9 +215,9 @@ class ConfigManager {
       processName = extractProcessName(processPath);
     }
 
-    //TODO: Store actual value in config properly??
     _sliderConfigsCache[sliderIndex] = {
       'processName': processName,
+      'processPath': processPath, // Store full path
       'sliderTag': sliderTag,
       'isMuted': isMuted,
       'volumeValue': volumeValue,
@@ -281,7 +455,8 @@ class ConfigManager {
         processPath = assignedApps[i]?.processPath;
       }
 
-      updateSliderConfig(i, processPath, sliderTags[i], muteStates[i]);
+      updateSliderConfig(i, processPath, sliderTags[i], muteStates[i],
+          volumeValue: sliderValues[i]);
     }
 
     await saveAllSliderConfigs();
@@ -290,7 +465,8 @@ class ConfigManager {
 
   Future<void> onApplicationAssigned(int sliderIndex, ProcessVolume app,
       double volume, String sliderTag, bool isMuted) async {
-    updateSliderConfig(sliderIndex, app.processPath, sliderTag, isMuted);
+    updateSliderConfig(sliderIndex, app.processPath, sliderTag, isMuted,
+        volumeValue: volume);
 
     await saveAllSliderConfigs();
     print('Application assigned to slider $sliderIndex and saved to disk');
@@ -298,7 +474,8 @@ class ConfigManager {
 
   Future<void> onSpecialSliderAssigned(
       int sliderIndex, String specialTag, double volume, bool isMuted) async {
-    updateSliderConfig(sliderIndex, null, specialTag, isMuted);
+    updateSliderConfig(sliderIndex, null, specialTag, isMuted,
+        volumeValue: volume);
 
     await saveAllSliderConfigs();
     print(

@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:mixlit/backend/application/VolumeController.dart';
@@ -19,7 +21,9 @@ import 'package:mixlit/frontend/menu/slider_assignment.dart';
 import 'package:window_manager/window_manager.dart';
 
 class HomePage extends StatefulWidget {
-  const HomePage({super.key});
+  final bool isAutoStarted;
+
+  const HomePage({super.key, this.isAutoStarted = false});
 
   @override
   _HomePageState createState() => _HomePageState();
@@ -33,11 +37,13 @@ class _HomePageState extends State<HomePage>
   late final VolumeController _volumeController;
   late final ConnectionHandler _connectionHandler;
   late final DeviceEventHandler _deviceEventHandler;
+  StreamSubscription? _initialHardwareValuesSubscription;
 
   // App state
-  final List<double> _sliderValues = List.filled(5, 0.0);
+  final List<double> _sliderValues = List.filled(5, 0.1);
   List<ProcessVolume?> _assignedApps = List.filled(5, null);
   final Map<String, Uint8List?> _appIcons = {};
+  final Map<String, Uint8List?> _cachedAppIcons = {};
   List<String> _sliderTags = List.filled(5, 'unassigned');
   bool _configLoaded = false;
 
@@ -52,6 +58,10 @@ class _HomePageState extends State<HomePage>
   final Color _masterVolumeColor = const Color.fromARGB(255, 188, 184, 147);
   final Color _activeAppColor = const Color.fromARGB(255, 69, 205, 255);
   final Color _unassignedColor = const Color.fromARGB(255, 51, 51, 51);
+  final Color _missingAppColor = const Color.fromARGB(255, 249, 244, 235);
+
+  final Map<int, AnimationController> _pulseControllers = {};
+  final Map<int, Animation<double>> _pulseAnimations = {};
 
   //late final LEDController _ledController;
   //bool _useAnimatedLEDs = false;
@@ -93,6 +103,20 @@ class _HomePageState extends State<HomePage>
             i, _muteButtonController.muteStates[i]);
       }
 
+      _applicationManager.onAppRestored = (int sliderIndex, ProcessVolume app) {
+        _assignedApps[sliderIndex] = app;
+
+        _volumeController.updateAssignedApps(_assignedApps);
+
+        _volumeController.updateSliderTags(_sliderTags);
+
+        if (mounted) {
+          setState(() {});
+        }
+
+        print('Synced restored app: ${app.processPath} on slider $sliderIndex');
+      };
+
       _connectionHandler = ConnectionHandler();
 
       _deviceEventHandler = DeviceEventHandler(
@@ -101,6 +125,8 @@ class _HomePageState extends State<HomePage>
         onButtonEvent: _handleButtonEvent,
         onConnectionStateChanged: _handleConnectionStateChanged,
       );
+
+      _deviceEventHandler.initialize();
 
       //_ledController = LEDController(
       //  serialWorker: _worker,
@@ -123,7 +149,95 @@ class _HomePageState extends State<HomePage>
       //_ledController.updateAllLEDs();
 
       _checkForUpdates();
+
+      _startPeriodicUIUpdates();
     });
+  }
+
+  void _startPeriodicUIUpdates() {
+    Timer.periodic(const Duration(seconds: 2), (timer) {
+      if (mounted && _configLoaded) {
+        _updateSliderStatesFromApplicationManager();
+      }
+    });
+  }
+
+  void _createPulseAnimation(int sliderIndex) {
+    if (_pulseControllers.containsKey(sliderIndex)) return;
+
+    final controller = AnimationController(
+      duration: const Duration(seconds: 2),
+      vsync: this,
+    );
+
+    final animation = Tween<double>(
+      begin: 0.5,
+      end: 1.0,
+    ).animate(CurvedAnimation(
+      parent: controller,
+      curve: Curves.easeInOut,
+    ));
+
+    _pulseControllers[sliderIndex] = controller;
+    _pulseAnimations[sliderIndex] = animation;
+
+    // Add listener to trigger rebuilds only when needed
+    animation.addListener(() {
+      if (mounted) {
+        setState(() {});
+      }
+    });
+
+    controller.repeat(reverse: true);
+  }
+
+  void _disposePulseAnimation(int sliderIndex) {
+    _pulseControllers[sliderIndex]?.dispose();
+    _pulseControllers.remove(sliderIndex);
+    _pulseAnimations.remove(sliderIndex);
+  }
+
+  void _updateSliderStatesFromApplicationManager() {
+    bool needsUpdate = false;
+
+    for (int i = 0; i < _sliderTags.length; i++) {
+      if (_sliderTags[i] == ConfigManager.TAG_APP) {
+        final currentApp = _assignedApps[i];
+        final managerApp = _applicationManager.assignedApplications[i];
+        final hasMissingApp =
+            _applicationManager.missingApplications.containsKey(i);
+
+        // Check if app status changed (missing -> active or vice versa)
+        if ((currentApp == null && managerApp != null) ||
+            (currentApp != null && managerApp == null)) {
+          _assignedApps[i] = managerApp;
+          needsUpdate = true;
+
+          if (managerApp != null) {
+            // App became active - dispose pulse animation
+            _disposePulseAnimation(i);
+            _loadIconForApp(managerApp.processPath);
+          }
+        }
+
+        // Handle pulse animations for missing apps
+        if (hasMissingApp && !_pulseControllers.containsKey(i)) {
+          _createPulseAnimation(i);
+          needsUpdate = true;
+        } else if (!hasMissingApp && _pulseControllers.containsKey(i)) {
+          _disposePulseAnimation(i);
+          needsUpdate = true;
+        }
+      }
+    }
+
+    if (needsUpdate) {
+      _loadIconsForAssignedApps().then((_) {
+        if (mounted) {
+          setState(() {});
+        }
+      });
+    }
   }
 
   Future<void> _initTray() async {
@@ -158,6 +272,23 @@ class _HomePageState extends State<HomePage>
     windowManager.hide();
   }
 
+  Future<void> _loadIconForApp(String processPath) async {
+    if (!_appIcons.containsKey(processPath)) {
+      _appIcons[processPath] = await nativeIconToBytes(processPath);
+    }
+  }
+
+  Future<Uint8List?> _loadCachedIcon(String cachedIconPath) async {
+    try {
+      if (await File(cachedIconPath).exists()) {
+        return await File(cachedIconPath).readAsBytes();
+      }
+    } catch (e) {
+      print('Error loading cached icon: $e');
+    }
+    return null;
+  }
+
   Future<void> _loadIconsForAssignedApps() async {
     for (int i = 0; i < _assignedApps.length; i++) {
       final app = _assignedApps[i];
@@ -171,17 +302,37 @@ class _HomePageState extends State<HomePage>
         _sliderColors[i] = _activeAppColor;
       } else if (sliderTag == ConfigManager.TAG_UNASSIGNED) {
         _sliderColors[i] = _unassignedColor;
-      } else if (sliderTag == ConfigManager.TAG_APP && app != null) {
-        if (!_appIcons.containsKey(app.processPath)) {
-          _appIcons[app.processPath] = await nativeIconToBytes(app.processPath);
-        }
+      } else if (sliderTag == ConfigManager.TAG_APP) {
+        if (app != null) {
+          await _loadIconForApp(app.processPath);
 
-        if (_appIcons[app.processPath] != null) {
-          _sliderColors[i] = await IconColorExtractor.extractDominantColor(
-              _appIcons[app.processPath]!, app.processPath,
-              defaultColor: _defaultAppColor);
+          if (_appIcons[app.processPath] != null) {
+            _sliderColors[i] = await IconColorExtractor.extractDominantColor(
+                _appIcons[app.processPath]!, app.processPath,
+                defaultColor: _defaultAppColor);
+          } else {
+            _sliderColors[i] = _defaultAppColor;
+          }
         } else {
-          _sliderColors[i] = _defaultAppColor;
+          final missingApp = _applicationManager.missingApplications[i];
+          if (missingApp != null) {
+            _sliderColors[i] = _missingAppColor;
+
+            if (missingApp.cachedIconPath != null) {
+              final cachedIcon =
+                  await _loadCachedIcon(missingApp.cachedIconPath!);
+              if (cachedIcon != null) {
+                _cachedAppIcons[missingApp.processName] = cachedIcon;
+
+                _sliderColors[i] =
+                    await IconColorExtractor.extractDominantColor(
+                        cachedIcon, missingApp.processName,
+                        defaultColor: _missingAppColor);
+              }
+            }
+          } else {
+            _sliderColors[i] = _defaultAppColor;
+          }
         }
       } else {
         _sliderColors[i] = _defaultAppColor;
@@ -285,7 +436,18 @@ class _HomePageState extends State<HomePage>
       _connectionHandler.showConnectionNotification(context, connected);
 
       if (connected && _configLoaded) {
-        _initializeConfiguration();
+        _initializeConfiguration().then((_) {
+          Future.delayed(const Duration(milliseconds: 1000), () {
+            if (_worker.isDeviceConnected && mounted) {
+              print('Requesting initial hardware values after connection...');
+              _worker.requestInitialHardwareValues().then((values) {
+                if (values != null && mounted) {
+                  _restoreHardwareValues(values);
+                }
+              });
+            }
+          });
+        });
       }
     }
   }
@@ -337,10 +499,45 @@ class _HomePageState extends State<HomePage>
     _uiUpdater.requestUpdate();
   }
 
+  void _restoreHardwareValues(Map<int, int> hardwareValues) {
+    if (!_configLoaded) return;
+
+    print('Restoring hardware values: $hardwareValues');
+
+    hardwareValues.forEach((sliderId, hardwareValue) {
+      if (sliderId >= 0 && sliderId < _sliderValues.length) {
+        final doubleValue = hardwareValue.toDouble();
+        _sliderValues[sliderId] = doubleValue;
+
+        _muteButtonController.updatePreviousVolumeValue(sliderId, doubleValue);
+
+        if (!_muteButtonController.muteStates[sliderId]) {
+          _volumeController.adjustVolume(sliderId, doubleValue);
+        } else {
+          _volumeController.storeVolumeValue(sliderId, doubleValue);
+        }
+
+        _applicationManager.updateSliderConfig(
+            sliderId, doubleValue, _muteButtonController.muteStates[sliderId]);
+
+        print('Restored slider $sliderId to hardware value: $hardwareValue');
+      }
+    });
+
+    _uiUpdater.requestUpdate();
+  }
+
   @override
   void dispose() {
+    for (final controller in _pulseControllers.values) {
+      controller.dispose();
+    }
+    _pulseControllers.clear();
+    _pulseAnimations.clear();
+
     _uiUpdater.dispose();
     _sliderUpdater.dispose();
+    _initialHardwareValuesSubscription?.cancel();
 
     _worker.dispose();
     _muteButtonController.dispose();
@@ -375,10 +572,17 @@ class _HomePageState extends State<HomePage>
       //_ledController.updateSliderLEDs(index);
     }
 
+    _initialHardwareValuesSubscription =
+        _worker.initialHardwareValues.listen((hardwareValues) {
+      print('Received initial hardware values in HomePage: $hardwareValues');
+      _restoreHardwareValues(hardwareValues);
+    });
+
     setState(() {
       _volumeController.updateSliderTags(_sliderTags);
       _volumeController.updateAssignedApps(_assignedApps);
       //_ledController.updateSliderTags(_sliderTags);
+      _configLoaded = true;
     });
   }
 
@@ -401,24 +605,102 @@ class _HomePageState extends State<HomePage>
       _sliderColors[index] = _activeAppColor;
     } else if (sliderTag == ConfigManager.TAG_UNASSIGNED) {
       _sliderColors[index] = _unassignedColor;
-    } else if (sliderTag == ConfigManager.TAG_APP && app != null) {
-      if (!_appIcons.containsKey(app.processPath) ||
-          _appIcons[app.processPath] == null) {
-        _appIcons[app.processPath] = await nativeIconToBytes(app.processPath);
-      }
+    } else if (sliderTag == ConfigManager.TAG_APP) {
+      if (app != null) {
+        await _loadIconForApp(app.processPath);
 
-      if (_appIcons[app.processPath] != null) {
-        _sliderColors[index] = await IconColorExtractor.extractDominantColor(
-            _appIcons[app.processPath]!, app.processPath,
-            defaultColor: _defaultAppColor);
+        if (_appIcons[app.processPath] != null) {
+          _sliderColors[index] = await IconColorExtractor.extractDominantColor(
+              _appIcons[app.processPath]!, app.processPath,
+              defaultColor: _defaultAppColor);
+        } else {
+          _sliderColors[index] = _defaultAppColor;
+        }
       } else {
-        _sliderColors[index] = _defaultAppColor;
+        final missingApp = _applicationManager.missingApplications[index];
+        if (missingApp != null) {
+          _sliderColors[index] = _missingAppColor;
+        } else {
+          _sliderColors[index] = _defaultAppColor;
+        }
       }
     } else {
       _sliderColors[index] = _defaultAppColor;
     }
 
     // _ledController.updateSliderLEDs(index);
+  }
+
+  Widget _buildSliderIcon(int index) {
+    final sliderTag = _sliderTags[index];
+    final app = _assignedApps[index];
+    final hasMissingApp =
+        _applicationManager.missingApplications.containsKey(index);
+
+    if (sliderTag == ConfigManager.TAG_DEFAULT_DEVICE) {
+      return const Icon(Icons.speaker, color: Colors.white, size: 32);
+    } else if (sliderTag == ConfigManager.TAG_MASTER_VOLUME) {
+      return const Icon(Icons.volume_up, color: Colors.white, size: 32);
+    } else if (sliderTag == ConfigManager.TAG_ACTIVE_APP) {
+      return const Icon(Icons.app_registration, color: Colors.white, size: 32);
+    } else if (sliderTag == ConfigManager.TAG_APP) {
+      if (app != null) {
+        final appPath = app.processPath;
+        if (_appIcons.containsKey(appPath) && _appIcons[appPath] != null) {
+          return ApplicationIcon(iconData: _appIcons[appPath]!);
+        }
+      } else if (hasMissingApp) {
+        final missingApp = _applicationManager.missingApplications[index]!;
+        final cachedIcon = _cachedAppIcons[missingApp.processName];
+        if (cachedIcon != null) {
+          return ApplicationIcon(iconData: cachedIcon);
+        }
+      }
+
+      return const Icon(Icons.apps, color: Colors.white, size: 32);
+    } else {
+      return const Icon(Icons.add_circle_outline,
+          color: Colors.white, size: 32);
+    }
+  }
+
+  String _buildSliderTitle(int index) {
+    final sliderTag = _sliderTags[index];
+    final app = _assignedApps[index];
+
+    if (sliderTag == ConfigManager.TAG_DEFAULT_DEVICE) {
+      return 'Device';
+    } else if (sliderTag == ConfigManager.TAG_MASTER_VOLUME) {
+      return 'Master\nVolume';
+    } else if (sliderTag == ConfigManager.TAG_ACTIVE_APP) {
+      return 'Active\nApp';
+    } else if (sliderTag == ConfigManager.TAG_APP) {
+      if (app != null) {
+        final appName = app.processPath.split(r'\').last;
+        String title = appName.replaceAll('.exe', '');
+        title = title[0].toUpperCase() + title.substring(1);
+        return title;
+      } else {
+        final missingApp = _applicationManager.missingApplications[index];
+        if (missingApp != null) {
+          return missingApp.displayName;
+        }
+      }
+    }
+
+    return 'N/A';
+  }
+
+  bool _isSliderActive(int index) {
+    final sliderTag = _sliderTags[index];
+    if (sliderTag == ConfigManager.TAG_UNASSIGNED) return false;
+
+    if (sliderTag == ConfigManager.TAG_APP) {
+      return _assignedApps[index] != null ||
+          _applicationManager.missingApplications.containsKey(index);
+    }
+
+    return true;
   }
 
   Future<void> _checkForUpdates() async {
@@ -656,62 +938,48 @@ class _HomePageState extends State<HomePage>
                       final int volumePercentage =
                           (_sliderValues[index] / 1024 * 100).round();
 
-                      Widget? iconWidget;
-                      String title;
+                      final Widget iconWidget = _buildSliderIcon(index);
+                      final String title = _buildSliderTitle(index);
+                      final bool isActive = _isSliderActive(index);
+                      final bool hasMissingApp = _applicationManager
+                          .missingApplications
+                          .containsKey(index);
+
                       Color primaryColor;
-                      final String sliderTag = _sliderTags[index];
+                      final sliderTag = _sliderTags[index];
 
                       if (sliderTag == ConfigManager.TAG_DEFAULT_DEVICE) {
-                        iconWidget = const Icon(Icons.speaker,
-                            color: Colors.white, size: 32);
-                        title = 'Device';
                         primaryColor = Colors.blue;
                       } else if (sliderTag == ConfigManager.TAG_MASTER_VOLUME) {
-                        iconWidget = const Icon(Icons.volume_up,
-                            color: Colors.white, size: 32);
-                        title = 'Master\nVolume';
                         primaryColor = Colors.green;
                       } else if (sliderTag == ConfigManager.TAG_ACTIVE_APP) {
-                        iconWidget = const Icon(Icons.app_registration,
-                            color: Colors.white, size: 32);
-                        title = 'Active\nApp';
                         primaryColor = Colors.purple;
-                      } else if (sliderTag == ConfigManager.TAG_APP &&
-                          _assignedApps[index] != null) {
-                        final appPath = _assignedApps[index]!.processPath;
-                        if (_appIcons.containsKey(appPath) &&
-                            _appIcons[appPath] != null) {
-                          iconWidget =
-                              ApplicationIcon(iconData: _appIcons[appPath]!);
+                      } else if (sliderTag == ConfigManager.TAG_APP) {
+                        if (_assignedApps[index] != null) {
+                          primaryColor = Colors.amber;
+                        } else if (hasMissingApp) {
+                          primaryColor = _missingAppColor;
                         } else {
-                          iconWidget = const Icon(Icons.apps,
-                              color: Colors.white, size: 32);
+                          primaryColor = Colors.grey;
                         }
-
-                        final appName =
-                            _assignedApps[index]!.processPath.split(r'\').last;
-                        title = appName.replaceAll('.exe', '');
-                        title = title[0].toUpperCase() + title.substring(1);
-
-                        primaryColor = Colors.amber;
                       } else {
-                        iconWidget = const Icon(Icons.add_circle_outline,
-                            color: Colors.white, size: 32);
-                        title = 'N/A';
                         primaryColor = Colors.grey;
                       }
 
-                      return VerticalSliderCard(
+                      Widget sliderWidget = VerticalSliderCard(
                         title: title,
                         iconWidget: iconWidget,
                         value: _sliderValues[index] / 1024,
                         isMuted: isMuted,
-                        isActive: sliderTag != ConfigManager.TAG_UNASSIGNED,
+                        isActive: isActive,
                         percentage: volumePercentage,
-                        accentColor: _sliderColors[index] ??
-                            (sliderTag == ConfigManager.TAG_APP
-                                ? _defaultAppColor
-                                : _unassignedColor),
+                        accentColor: hasMissingApp
+                            ? _missingAppColor
+                            : (_sliderColors[index] ?? primaryColor),
+                        accentOpacity:
+                            hasMissingApp && _pulseAnimations.containsKey(index)
+                                ? _pulseAnimations[index]!.value
+                                : 1.0,
                         onSliderChanged: (value) {
                           final scaledValue = value * 1024;
                           _handleVolumeAdjustment(index, scaledValue);
@@ -719,6 +987,13 @@ class _HomePageState extends State<HomePage>
                         onMutePressed: () => _toggleMute(index),
                         onTap: () => _selectApp(index),
                         isDarkMode: isDarkMode,
+                      );
+
+                      return Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                          child: sliderWidget,
+                        ),
                       );
                     }),
                   ),
