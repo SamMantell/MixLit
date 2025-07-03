@@ -177,50 +177,6 @@ class SerialConnectionManager {
     _isInitializing = true;
 
     try {
-      print('Starting serial port initialization...');
-
-      _lastKnownPort = await _configManager.getLastComPort();
-      print('Retrieved last known port from config: $_lastKnownPort');
-
-      if (_lastKnownPort != null) {
-        try {
-          print('Attempting to connect to last known port: $_lastKnownPort');
-          final port = SerialPort(_lastKnownPort!);
-
-          if (!port.openReadWrite()) {
-            print('Failed to open $_lastKnownPort for read/write');
-            _lastKnownPort = null;
-          } else {
-            try {
-              port.config = _portConfig;
-              await Future.delayed(const Duration(milliseconds: 100));
-              port.flush();
-            } catch (e) {
-              print('Error configuring port: $e');
-              _lastKnownPort = null;
-              if (port.isOpen) port.close();
-            }
-
-            if (_lastKnownPort != null) {
-              if (await _verifyDevice(port)) {
-                print('Device verified on port: $_lastKnownPort');
-                await _establishConnection(port);
-                _isInitializing = false;
-                if (!_initCompleter.isCompleted) _initCompleter.complete();
-                return;
-              } else {
-                print('Device verification failed on port: $_lastKnownPort');
-                if (port.isOpen) port.close();
-                _lastKnownPort = null;
-              }
-            }
-          }
-        } catch (e) {
-          print('Failed to reconnect to last known port: $e');
-          _lastKnownPort = null;
-        }
-      }
-
       await _scanAndConnect();
     } catch (e) {
       print('Error during initialization: $e');
@@ -243,23 +199,26 @@ class SerialConnectionManager {
     }
 
     try {
-      await _cleanupExistingConnection();
+      // await _cleanupExistingConnection();
 
-      for (final portName in availablePorts) {
-        print('Attempting to connect to $portName...');
-        final result = await _attemptConnection(portName);
+      for (final address in availablePorts)
+      {
+        final port = SerialPort(address);
+        if (port.vendorId?.toHex() == "0x1a86" && port.productId?.toHex() == "0x7523")
+        {
+          final result = await _attemptConnection(address);
+          if (result != null)
+          {
+            _lastKnownPort = address;
+            print('Found device on port: $_lastKnownPort');
 
-        if (result != null) {
-          _lastKnownPort = portName;
-          print('Found device on port: $_lastKnownPort');
+            await _configManager.saveLastComPort(address);
 
-          await _configManager.saveLastComPort(portName);
-
-          await _establishConnection(result);
-          return;
+            await _establishConnection(result);
+            return;
+          }
         }
       }
-
       print('No MixLit device found on any available port');
       _startReconnectionTimer();
     } catch (e) {
@@ -279,7 +238,7 @@ class SerialConnectionManager {
     try {
       print('Verifying device on port ${port.name}...');
       port.flush();
-      await Future.delayed(const Duration(milliseconds: 50));
+      await Future.delayed(const Duration(milliseconds: 20));
 
       verificationReader = SerialPortReader(port);
 
@@ -404,7 +363,7 @@ class SerialConnectionManager {
       if (wasConnected && notify) {
         _connectionStateController.add(false);
         print('Device disconnected, starting continuous port scanning...');
-        Timer(const Duration(seconds: 1), () {
+        Timer(const Duration(milliseconds: 100), () {
           _startReconnectionTimer();
         });
       }
@@ -439,7 +398,7 @@ class SerialConnectionManager {
 
       if (port.isOpen) {
         port.close();
-        await Future.delayed(const Duration(milliseconds: 100));
+        await Future.delayed(const Duration(milliseconds: 20));
       }
 
       if (!port.openReadWrite()) {
@@ -449,7 +408,7 @@ class SerialConnectionManager {
 
       try {
         port.config = _portConfig;
-        await Future.delayed(const Duration(milliseconds: 100));
+        await Future.delayed(const Duration(milliseconds: 20));
         port.flush();
       } catch (e) {
         print('Error configuring port: $e');
@@ -476,7 +435,7 @@ class SerialConnectionManager {
     print('Starting reconnection timer...');
     _reconnectTimer?.cancel();
     _reconnectTimer = Timer.periodic(
-      const Duration(seconds: 2),
+      const Duration(milliseconds: 100),
       (_) async {
         if (!_isConnected && !_isInitializing) {
           await _scanAndConnect();
@@ -489,7 +448,7 @@ class SerialConnectionManager {
     if (_isConnected) return;
 
     try {
-      await _cleanupExistingConnection();
+      // await _cleanupExistingConnection();
 
       _port = port;
 
@@ -543,4 +502,8 @@ class SerialConnectionManager {
       return false;
     }
   }
+}
+
+extension IntToString on int {
+  String toHex() => '0x${toRadixString(16)}';
 }
