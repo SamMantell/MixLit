@@ -21,7 +21,9 @@ import 'package:mixlit/frontend/menu/slider_assignment.dart';
 import 'package:window_manager/window_manager.dart';
 
 class HomePage extends StatefulWidget {
-  const HomePage({super.key});
+  final bool isAutoStarted;
+
+  const HomePage({super.key, this.isAutoStarted = false});
 
   @override
   _HomePageState createState() => _HomePageState();
