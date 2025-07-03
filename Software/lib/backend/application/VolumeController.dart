@@ -10,7 +10,7 @@ class VolumeController {
   List<ProcessVolume?> assignedApps;
   final AppInstanceManager _appInstanceManager = AppInstanceManager.instance;
 
-  static const int RATE_LIMIT_MS = 50;
+  static const int RATE_LIMIT_MS = 10;
   DateTime _lastVolumeUpdate = DateTime.now();
   Timer? _pendingVolumeTimer;
   final Map<int, double> _pendingVolumeChanges = {};

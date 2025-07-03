@@ -7,6 +7,8 @@ class SerialWorker {
   final _buttonDataController = StreamController<Map<String, int>>.broadcast();
   final _rawDataController = StreamController<String>.broadcast();
   final _connectionStateController = StreamController<bool>.broadcast();
+  final _initialHardwareValuesController =
+      StreamController<Map<int, int>>.broadcast();
 
   late final SerialConnectionManager _connectionManager;
   Isolate? _dataProcessingIsolate;
@@ -20,12 +22,15 @@ class SerialWorker {
   Stream<Map<String, int>> get buttonData => _buttonDataController.stream;
   Stream<String> get rawData => _rawDataController.stream;
   Stream<bool> get connectionState => _connectionStateController.stream;
+  Stream<Map<int, int>> get initialHardwareValues =>
+      _initialHardwareValuesController.stream;
 
   SerialWorker() {
     _connectionManager = SerialConnectionManager(
       connectionStateController: _connectionStateController,
       onDataReceived: _handleData,
       onError: _handleError,
+      onInitialHardwareValues: _handleInitialHardwareValues,
     );
     _connectionManager.initialized.then((_) {
       _connectionStateSubscription =
@@ -34,17 +39,33 @@ class SerialWorker {
         if (!connected) {
           _cleanupDataProcessing();
         } else {
-          _initializeDataProcessing();
+          _initializeDataProcessing().then((_) {
+            print('SerialWorker initialization complete');
+            if (!_initCompleter.isCompleted) {
+              _initCompleter.complete();
+            }
+          });
         }
       });
 
-      _initializeDataProcessing().then((_) {
-        print('SerialWorker initialization complete');
-        if (!_initCompleter.isCompleted) {
-          _initCompleter.complete();
-        }
-      });
+      if (_connectionManager.isConnected) {
+        _initializeDataProcessing().then((_) {
+          print('SerialWorker initialization complete');
+          if (!_initCompleter.isCompleted) {
+            _initCompleter.complete();
+          }
+        });
+      }
     });
+  }
+
+  void _handleInitialHardwareValues(Map<int, int> values) {
+    print('SerialWorker: Received initial hardware values: $values');
+    _initialHardwareValuesController.add(values);
+  }
+
+  Future<Map<int, int>?> requestInitialHardwareValues() async {
+    return await _connectionManager.getInitialHardwareValues();
   }
 
   void _cleanupDataProcessing() {
@@ -78,6 +99,7 @@ class SerialWorker {
     await _buttonDataController.close();
     await _rawDataController.close();
     await _connectionStateController.close();
+    await _initialHardwareValuesController.close();
     print('SerialWorker disposal complete');
   }
 

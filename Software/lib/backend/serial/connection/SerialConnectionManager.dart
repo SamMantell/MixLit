@@ -32,9 +32,15 @@ class SerialConnectionManager {
   DateTime? _lastSuccessfulWrite;
   static const Duration DATA_TIMEOUT = Duration(seconds: 30);
 
+  bool _awaitingInitialValues = false;
+  final Completer<Map<int, int>?> _initialValuesCompleter =
+      Completer<Map<int, int>?>();
+  Timer? _initialValuesTimeout;
+
   final StreamController<bool> _connectionStateController;
   final void Function(List<int>) onDataReceived;
   final void Function(dynamic) onError;
+  final void Function(Map<int, int>)? onInitialHardwareValues;
 
   final ConfigManager _configManager = ConfigManager.instance;
 
@@ -56,10 +62,47 @@ class SerialConnectionManager {
     required StreamController<bool> connectionStateController,
     required this.onDataReceived,
     required this.onError,
+    this.onInitialHardwareValues,
   }) : _connectionStateController = connectionStateController {
     Future.delayed(Duration(milliseconds: 100), () {
       _initializeConnection();
     });
+  }
+
+  Future<Map<int, int>?> getInitialHardwareValues() async {
+    if (!_isConnected || _port == null) {
+      print('Cannot get hardware values: not connected');
+      return null;
+    }
+
+    if (_awaitingInitialValues) {
+      print('Already waiting for initial values');
+      return await _initialValuesCompleter.future;
+    }
+
+    _awaitingInitialValues = true;
+    print('Requesting initial hardware values...');
+
+    try {
+      _port!.write(DEVICE_IDENTIFICATION_REQUEST);
+      _port!.flush();
+
+      _initialValuesTimeout = Timer(const Duration(seconds: 3), () {
+        if (!_initialValuesCompleter.isCompleted) {
+          print('Timeout waiting for initial hardware values');
+          _initialValuesCompleter.complete(null);
+        }
+        _awaitingInitialValues = false;
+      });
+
+      final result = await _initialValuesCompleter.future;
+      print('Received initial hardware values: $result');
+      return result;
+    } catch (e) {
+      print('Error getting initial hardware values: $e');
+      _awaitingInitialValues = false;
+      return null;
+    }
   }
 
   void _startConnectionHealthCheck() {
@@ -177,6 +220,50 @@ class SerialConnectionManager {
     _isInitializing = true;
 
     try {
+      print('Starting serial port initialization...');
+
+      _lastKnownPort = await _configManager.getLastComPort();
+      print('Retrieved last known port from config: $_lastKnownPort');
+
+      if (_lastKnownPort != null) {
+        try {
+          print('Attempting to connect to last known port: $_lastKnownPort');
+          final port = SerialPort(_lastKnownPort!);
+
+          if (!port.openReadWrite()) {
+            print('Failed to open $_lastKnownPort for read/write');
+            _lastKnownPort = null;
+          } else {
+            try {
+              port.config = _portConfig;
+              await Future.delayed(const Duration(milliseconds: 100));
+              port.flush();
+            } catch (e) {
+              print('Error configuring port: $e');
+              _lastKnownPort = null;
+              if (port.isOpen) port.close();
+            }
+
+            if (_lastKnownPort != null) {
+              if (await _verifyDevice(port)) {
+                print('Device verified on port: $_lastKnownPort');
+                await _establishConnection(port);
+                _isInitializing = false;
+                if (!_initCompleter.isCompleted) _initCompleter.complete();
+                return;
+              } else {
+                print('Device verification failed on port: $_lastKnownPort');
+                if (port.isOpen) port.close();
+                _lastKnownPort = null;
+              }
+            }
+          }
+        } catch (e) {
+          print('Failed to reconnect to last known port: $e');
+          _lastKnownPort = null;
+        }
+      }
+
       await _scanAndConnect();
     } catch (e) {
       print('Error during initialization: $e');
@@ -199,26 +286,23 @@ class SerialConnectionManager {
     }
 
     try {
-      // await _cleanupExistingConnection();
+      await _cleanupExistingConnection();
 
-      for (final address in availablePorts)
-      {
-        final port = SerialPort(address);
-        if (port.vendorId?.toHex() == "0x1a86" && port.productId?.toHex() == "0x7523")
-        {
-          final result = await _attemptConnection(address);
-          if (result != null)
-          {
-            _lastKnownPort = address;
-            print('Found device on port: $_lastKnownPort');
+      for (final portName in availablePorts) {
+        print('Attempting to connect to $portName...');
+        final result = await _attemptConnection(portName);
 
-            await _configManager.saveLastComPort(address);
+        if (result != null) {
+          _lastKnownPort = portName;
+          print('Found device on port: $_lastKnownPort');
 
-            await _establishConnection(result);
-            return;
-          }
+          await _configManager.saveLastComPort(portName);
+
+          await _establishConnection(result);
+          return;
         }
       }
+
       print('No MixLit device found on any available port');
       _startReconnectionTimer();
     } catch (e) {
@@ -234,11 +318,12 @@ class SerialConnectionManager {
     Timer? timeoutTimer;
     SerialPortReader? verificationReader;
     StreamSubscription? subscription;
+    bool receivedInitialData = false;
 
     try {
       print('Verifying device on port ${port.name}...');
       port.flush();
-      await Future.delayed(const Duration(milliseconds: 20));
+      await Future.delayed(const Duration(milliseconds: 50));
 
       verificationReader = SerialPortReader(port);
 
@@ -247,10 +332,28 @@ class SerialConnectionManager {
           try {
             final response = String.fromCharCodes(data).trim();
             print('Received verification response: "$response"');
+
+            // Check for device identifier
             if (response.contains(DEVICE_IDENTIFIER) &&
                 !completer.isCompleted) {
               print('Device identified as a MixLit - yippee!');
               completer.complete(true);
+              return;
+            }
+
+            if (response.contains('|') && !receivedInitialData) {
+              receivedInitialData = true;
+              print('Received initial data during verification: $response');
+
+              if (_awaitingInitialValues) {
+                final parsedData = _parseSliderData(response);
+                if (parsedData.isNotEmpty &&
+                    !_initialValuesCompleter.isCompleted) {
+                  _initialValuesCompleter.complete(parsedData);
+                  _initialValuesTimeout?.cancel();
+                  _awaitingInitialValues = false;
+                }
+              }
             }
           } catch (e) {
             print('Error processing verification data: $e');
@@ -290,6 +393,33 @@ class SerialConnectionManager {
     }
   }
 
+  Map<int, int> _parseSliderData(String data) {
+    final Map<int, int> sliderData = {};
+
+    try {
+      final parts = data.split('|');
+
+      for (var i = 0; i < parts.length - 1; i += 2) {
+        if (parts[i].isEmpty || parts[i + 1].isEmpty) continue;
+
+        try {
+          final sliderId = int.parse(parts[i].trim());
+          final sliderValue = int.parse(parts[i + 1].trim());
+
+          if (sliderId >= 0 && sliderId <= 4) {
+            sliderData[sliderId] = sliderValue;
+          }
+        } catch (e) {
+          continue;
+        }
+      }
+    } catch (e) {
+      print('Error parsing slider data: $e');
+    }
+
+    return sliderData;
+  }
+
   Future<void> _setupPortReader() async {
     if (_port == null || !_port!.isOpen) {
       print('Port not ready for reader setup');
@@ -306,6 +436,26 @@ class SerialConnectionManager {
         (data) {
           _lastDataReceived = DateTime.now();
           _connectionHealthCheckFailures = 0;
+
+          if (_awaitingInitialValues) {
+            final response = String.fromCharCodes(data).trim();
+            if (response.contains('|')) {
+              final parsedData = _parseSliderData(response);
+              if (parsedData.isNotEmpty &&
+                  !_initialValuesCompleter.isCompleted) {
+                print('Received initial hardware values: $parsedData');
+                _initialValuesCompleter.complete(parsedData);
+                _initialValuesTimeout?.cancel();
+                _awaitingInitialValues = false;
+
+                if (onInitialHardwareValues != null) {
+                  onInitialHardwareValues!(parsedData);
+                }
+                return;
+              }
+            }
+          }
+
           onDataReceived(data);
         },
         onError: (error) {
@@ -332,6 +482,12 @@ class SerialConnectionManager {
     _isInitializing = true;
 
     _connectionHealthCheckTimer?.cancel();
+    _initialValuesTimeout?.cancel();
+
+    if (_awaitingInitialValues && !_initialValuesCompleter.isCompleted) {
+      _initialValuesCompleter.complete(null);
+      _awaitingInitialValues = false;
+    }
 
     try {
       if (_readerSubscription != null) {
@@ -363,7 +519,7 @@ class SerialConnectionManager {
       if (wasConnected && notify) {
         _connectionStateController.add(false);
         print('Device disconnected, starting continuous port scanning...');
-        Timer(const Duration(milliseconds: 100), () {
+        Timer(const Duration(seconds: 1), () {
           _startReconnectionTimer();
         });
       }
@@ -374,6 +530,12 @@ class SerialConnectionManager {
     print('Disposing SerialConnectionManager...');
     _reconnectTimer?.cancel();
     _connectionHealthCheckTimer?.cancel();
+    _initialValuesTimeout?.cancel();
+
+    if (_awaitingInitialValues && !_initialValuesCompleter.isCompleted) {
+      _initialValuesCompleter.complete(null);
+    }
+
     await _handleDisconnection();
     await _readerSubscription?.cancel();
     await _reader?.dispose();
@@ -398,7 +560,7 @@ class SerialConnectionManager {
 
       if (port.isOpen) {
         port.close();
-        await Future.delayed(const Duration(milliseconds: 20));
+        await Future.delayed(const Duration(milliseconds: 100));
       }
 
       if (!port.openReadWrite()) {
@@ -408,7 +570,7 @@ class SerialConnectionManager {
 
       try {
         port.config = _portConfig;
-        await Future.delayed(const Duration(milliseconds: 20));
+        await Future.delayed(const Duration(milliseconds: 100));
         port.flush();
       } catch (e) {
         print('Error configuring port: $e');
@@ -435,7 +597,7 @@ class SerialConnectionManager {
     print('Starting reconnection timer...');
     _reconnectTimer?.cancel();
     _reconnectTimer = Timer.periodic(
-      const Duration(milliseconds: 100),
+      const Duration(seconds: 2),
       (_) async {
         if (!_isConnected && !_isInitializing) {
           await _scanAndConnect();
@@ -448,7 +610,7 @@ class SerialConnectionManager {
     if (_isConnected) return;
 
     try {
-      // await _cleanupExistingConnection();
+      await _cleanupExistingConnection();
 
       _port = port;
 
@@ -475,6 +637,10 @@ class SerialConnectionManager {
 
       _lastKnownPort = port.name;
       await _configManager.saveLastComPort(_lastKnownPort!);
+
+      Future.delayed(const Duration(milliseconds: 500), () {
+        getInitialHardwareValues();
+      });
     } catch (e) {
       print('Error establishing connection: $e');
       _isConnected = false;
@@ -502,8 +668,4 @@ class SerialConnectionManager {
       return false;
     }
   }
-}
-
-extension IntToString on int {
-  String toHex() => '0x${toRadixString(16)}';
 }
