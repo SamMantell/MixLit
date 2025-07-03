@@ -27,7 +27,6 @@ class mixlit {
     int colorIndexOffset;
 
     int sliderToChange;
-    bool needsUpdate;
 
     bool isConnected;
 
@@ -145,8 +144,6 @@ class mixlit {
                             HEX_VALUE[8], HEX_VALUE[9], HEX_VALUE[10],  HEX_VALUE[11], HEX_VALUE[12], HEX_VALUE[13], HEX_VALUE[14],  HEX_VALUE[15]
                         )
       };
-
-      needsUpdate = true;
     }
 
     void initialize()
@@ -177,6 +174,28 @@ class mixlit {
               Serial.println("mixlit");
               FastLED.setBrightness(16);
               delay(200);
+
+              for (int i = 0; i < NUM_OF_SLIDERS; i++)
+              {
+                currentSliderState[i] = 1023 - analogRead(sliders[i]);
+                previousSliderState[i] = currentSliderState[i];
+                stringToSendToSoftware += i;
+                stringToSendToSoftware += "|";
+                stringToSendToSoftware += previousSliderState[i];
+                stringToSendToSoftware += "|";
+              }
+              for (int i = 0; i < NUM_OF_POTENTIOMETERS; i++)
+              {
+                currentPotentiometerState[i] =  analogRead(potentiometers[i]);
+                previousPotentiometerState[i] = currentPotentiometerState[i];
+                stringToSendToSoftware += (i + NUM_OF_SLIDERS);
+                stringToSendToSoftware += "|";
+                stringToSendToSoftware += previousPotentiometerState[i];
+                stringToSendToSoftware += "|";
+              }
+
+              Serial.println(stringToSendToSoftware);
+
               return;
           }
         }
@@ -224,7 +243,7 @@ class mixlit {
 
       for (int i = 0; i < NUM_OF_SLIDERS; i++)
       {
-        if ((abs(currentSliderState[i] - previousSliderState[i]) > 5) || needsUpdate)
+        if ((abs(currentSliderState[i] - previousSliderState[i]) > 5))
         {
           if (currentSliderState[i] > 1020)
           {
@@ -238,7 +257,7 @@ class mixlit {
           setLEDs(currentSliderState[i], i);
         }
 
-        if ((abs(currentSliderState[i] - previousSliderState[i]) > 5 || needsUpdate))
+        if ((abs(currentSliderState[i] - previousSliderState[i]) > 5))
         {
           previousSliderState[i] = currentSliderState[i];
           stringToSendToSoftware += i;
