@@ -471,10 +471,113 @@ class _HomePageState extends State<HomePage>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
+                Stack(
                   children: [
-                    SizedBox(
-                      width: 150,
+                    Row(
+                      children: [
+                        // Left spacer to keep logo centered
+                        const SizedBox(width: 150),
+
+                        // Center logo and title
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              Image.asset(
+                                'lib/frontend/assets/images/logo/mixlit_full.png',
+                                height: 60,
+                                fit: BoxFit.contain,
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Volume Mixer Thingy Majig 9000',
+                                style: TextStyle(
+                                  fontFamily: 'BitstreamVeraSans',
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w100,
+                                  letterSpacing: 1,
+                                  color: isDarkMode
+                                      ? Colors.white
+                                      : const Color.fromARGB(255, 92, 92, 92),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
+                        //Settings and close button
+                        SizedBox(
+                          width: 150,
+                          child: Align(
+                            alignment: Alignment.centerRight,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                // Settings button
+                                Material(
+                                  color: Colors.transparent,
+                                  child: InkWell(
+                                    onTap: _onSettingsPressed,
+                                    borderRadius: BorderRadius.circular(20),
+                                    child: Container(
+                                      padding: const EdgeInsets.all(8),
+                                      decoration: BoxDecoration(
+                                        color: isDarkMode
+                                            ? Colors.white.withOpacity(0.1)
+                                            : Colors.black.withOpacity(0.1),
+                                        borderRadius: BorderRadius.circular(20),
+                                        border: Border.all(
+                                          color: isDarkMode
+                                              ? Colors.white.withOpacity(0.2)
+                                              : Colors.black.withOpacity(0.2),
+                                        ),
+                                      ),
+                                      child: Icon(
+                                        Icons.settings,
+                                        color: isDarkMode
+                                            ? Colors.white.withOpacity(0.8)
+                                            : Colors.black.withOpacity(0.8),
+                                        size: 20,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                //Close button
+                                Material(
+                                  color: Colors.transparent,
+                                  child: InkWell(
+                                    onTap: _onClosePressed,
+                                    borderRadius: BorderRadius.circular(20),
+                                    child: Container(
+                                      padding: const EdgeInsets.all(8),
+                                      decoration: BoxDecoration(
+                                        color: Colors.red.withOpacity(0.1),
+                                        borderRadius: BorderRadius.circular(20),
+                                        border: Border.all(
+                                          color: Colors.red.withOpacity(0.3),
+                                        ),
+                                      ),
+                                      child: Icon(
+                                        Icons.close,
+                                        color: Colors.red.withOpacity(0.8),
+                                        size: 20,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    //connection status Indicator
+                    Positioned(
+                      left: 0,
+                      top: 0,
+                      bottom: 0,
                       child: Align(
                         alignment: Alignment.centerLeft,
                         child: ListenableBuilder(
@@ -493,6 +596,13 @@ class _HomePageState extends State<HomePage>
                                       ? Colors.green.withOpacity(0.3)
                                       : Colors.red.withOpacity(0.3),
                                 ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.1),
+                                    blurRadius: 4,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
                               ),
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
@@ -519,105 +629,14 @@ class _HomePageState extends State<HomePage>
                                           ? Colors.green
                                           : Colors.red,
                                       fontWeight: FontWeight.w500,
+                                      fontSize: 14,
+                                      letterSpacing: 0.3,
                                     ),
                                   ),
                                 ],
                               ),
                             );
                           },
-                        ),
-                      ),
-                    ),
-
-                    // Center logo and title
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          Image.asset(
-                            'lib/frontend/assets/images/logo/mixlit_full.png',
-                            height: 60,
-                            fit: BoxFit.contain,
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Volume Mixer Thingy Majig 9000',
-                            style: TextStyle(
-                              fontFamily: 'BitstreamVeraSans',
-                              fontSize: 22,
-                              fontWeight: FontWeight.w100,
-                              letterSpacing: 1,
-                              color: isDarkMode
-                                  ? Colors.white
-                                  : const Color.fromARGB(255, 92, 92, 92),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    //Settings and close button
-                    SizedBox(
-                      width: 150,
-                      child: Align(
-                        alignment: Alignment.centerRight,
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            // Settings button
-                            Material(
-                              color: Colors.transparent,
-                              child: InkWell(
-                                onTap: _onSettingsPressed,
-                                borderRadius: BorderRadius.circular(20),
-                                child: Container(
-                                  padding: const EdgeInsets.all(8),
-                                  decoration: BoxDecoration(
-                                    color: isDarkMode
-                                        ? Colors.white.withOpacity(0.1)
-                                        : Colors.black.withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(20),
-                                    border: Border.all(
-                                      color: isDarkMode
-                                          ? Colors.white.withOpacity(0.2)
-                                          : Colors.black.withOpacity(0.2),
-                                    ),
-                                  ),
-                                  child: Icon(
-                                    Icons.settings,
-                                    color: isDarkMode
-                                        ? Colors.white.withOpacity(0.8)
-                                        : Colors.black.withOpacity(0.8),
-                                    size: 20,
-                                  ),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            //Close button
-                            Material(
-                              color: Colors.transparent,
-                              child: InkWell(
-                                onTap: _onClosePressed,
-                                borderRadius: BorderRadius.circular(20),
-                                child: Container(
-                                  padding: const EdgeInsets.all(8),
-                                  decoration: BoxDecoration(
-                                    color: Colors.red.withOpacity(0.1),
-                                    borderRadius: BorderRadius.circular(20),
-                                    border: Border.all(
-                                      color: Colors.red.withOpacity(0.3),
-                                    ),
-                                  ),
-                                  child: Icon(
-                                    Icons.close,
-                                    color: Colors.red.withOpacity(0.8),
-                                    size: 20,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
                         ),
                       ),
                     ),
