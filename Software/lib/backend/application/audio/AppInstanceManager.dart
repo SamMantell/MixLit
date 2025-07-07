@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'package:mixlit/backend/application/ConfigManager.dart';
+import 'package:mixlit/backend/application/data/ConfigManager.dart';
 import 'package:win32audio/win32audio.dart';
 
 /// The AppInstanceManager is purely here to fix the issue with some apps registering multiple sound sources under one executable (Discord for example)

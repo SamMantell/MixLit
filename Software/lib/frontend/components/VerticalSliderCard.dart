@@ -45,7 +45,6 @@ class VerticalSliderCard extends StatelessWidget {
     final effectiveAccentColorStrong =
         accentColor.withOpacity(accentOpacity * 0.8);
 
-    // Card width should be fixed for desktop layout
     const double cardWidth = 120;
 
     return Container(
@@ -72,12 +71,10 @@ class VerticalSliderCard extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // Top section with icon and title
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: Column(
               children: [
-                // App icon (clickable if assigned)
                 CustomTooltip(
                   message: isActive ? 'Change' : 'Assign Application',
                   child: GestureDetector(
@@ -99,7 +96,7 @@ class VerticalSliderCard extends StatelessWidget {
                           iconWidget ??
                               const Icon(Icons.apps, color: Colors.white),
 
-                          // Add a small edit icon for assigned cards
+                          //edit icon
                           if (isActive)
                             Positioned(
                               right: 0,
@@ -146,7 +143,8 @@ class VerticalSliderCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 4),
-                // Volume percentage
+
+                //volume value
                 Text(
                   isMuted ? 'MUTED' : '$percentage',
                   style: TextStyle(
@@ -160,7 +158,7 @@ class VerticalSliderCard extends StatelessWidget {
             ),
           ),
 
-          // Middle section with vertical slider
+          //slider
           if (isActive)
             Expanded(
               child: Container(
@@ -243,7 +241,7 @@ class VerticalSliderCard extends StatelessWidget {
               ),
             ),
 
-          // Bottom section with mute button
+          //bottom part
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: CustomTooltip(
@@ -263,7 +261,6 @@ class VerticalSliderCard extends StatelessWidget {
   }
 }
 
-// Custom track shape for the slider
 class CustomTrackShape extends RoundedRectSliderTrackShape {
   @override
   Rect getPreferredRect({
@@ -314,15 +311,6 @@ class SliderThumbShape extends SliderComponentShape {
     final Canvas canvas = context.canvas;
     final thumbColor = isMuted ? Colors.grey : accentColor;
 
-    // Draw outer circle with border
-    final Paint borderPaint = Paint()
-      ..color = thumbColor
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2;
-
-    canvas.drawCircle(center, 12, borderPaint);
-
-    // Draw filled circle
     final Paint fillPaint = Paint()
       ..color = thumbColor
       ..style = PaintingStyle.fill;
@@ -330,7 +318,6 @@ class SliderThumbShape extends SliderComponentShape {
     canvas.drawCircle(center, 10, fillPaint);
 
     if (isMuted) {
-      // Draw an X for muted
       final Paint linePaint = Paint()
         ..color = Colors.white
         ..style = PaintingStyle.stroke
@@ -348,7 +335,6 @@ class SliderThumbShape extends SliderComponentShape {
         linePaint,
       );
     } else {
-      // Draw a = for unmuted
       final Paint linePaint = Paint()
         ..color = Colors.white
         ..style = PaintingStyle.stroke

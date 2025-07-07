@@ -4,8 +4,8 @@ import 'dart:typed_data';
 
 import 'package:flutter_libserialport/flutter_libserialport.dart'
     show SerialPort, SerialPortConfig, SerialPortParity;
-import 'package:mixlit/backend/application/ConfigManager.dart';
-import 'package:mixlit/backend/serial/SerialPortReader.dart'
+import 'package:mixlit/backend/application/data/ConfigManager.dart';
+import 'package:mixlit/backend/application/serial/SerialPortReader.dart'
     show SerialPortReader;
 
 class SerialConnectionManager {

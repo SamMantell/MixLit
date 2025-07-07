@@ -1,9 +1,9 @@
 import 'dart:async';
 import 'package:flutter/services.dart';
-import 'package:mixlit/backend/serial/SerialWorker.dart';
-import 'package:mixlit/frontend/components/icon_colour_extractor.dart';
-import 'package:mixlit/backend/application/ConfigManager.dart';
-import 'package:mixlit/backend/application/ApplicationManager.dart';
+import 'package:mixlit/backend/application/serial/SerialWorker.dart';
+import 'package:mixlit/backend/application/util/IconColourExtractor.dart';
+import 'package:mixlit/backend/application/data/ConfigManager.dart';
+import 'package:mixlit/backend/application/audio/ApplicationManager.dart';
 import 'package:mixlit/frontend/components/util/rate_limit_updates.dart';
 import 'package:win32audio/win32audio.dart';
 

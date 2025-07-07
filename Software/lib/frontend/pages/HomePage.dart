@@ -2,28 +2,36 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import 'package:mixlit/backend/application/VolumeController.dart';
+import 'package:mixlit/backend/application/audio/VolumeController.dart';
 import 'package:mixlit/frontend/components/util/rate_limit_updates.dart';
 import 'package:tray_manager/tray_manager.dart';
 import 'package:win32audio/win32audio.dart';
 //import 'package:mixlit/backend/application/LEDController.dart';
-import 'package:mixlit/backend/application/Updater.dart';
-import 'package:mixlit/backend/serial/SerialWorker.dart';
-import 'package:mixlit/backend/application/ApplicationManager.dart';
-import 'package:mixlit/backend/application/ConfigManager.dart';
-import 'package:mixlit/frontend/controllers/mute_button_controller.dart';
+import 'package:mixlit/backend/Updater.dart';
+import 'package:mixlit/backend/application/serial/SerialWorker.dart';
+import 'package:mixlit/backend/application/audio/ApplicationManager.dart';
+import 'package:mixlit/backend/application/data/ConfigManager.dart';
+import 'package:mixlit/frontend/menus/SettingsMenu.dart';
+import 'package:mixlit/backend/application/audio/MuteState.dart';
 import 'package:mixlit/frontend/controllers/connection_handler.dart';
 import 'package:mixlit/frontend/controllers/device_event_handler.dart';
-import 'package:mixlit/frontend/components/vertical_slider_card.dart';
+import 'package:mixlit/frontend/components/VerticalSliderCard.dart';
+import 'package:mixlit/frontend/components/HorizontalDialCard.dart';
 import 'package:mixlit/frontend/components/application_icon.dart';
-import 'package:mixlit/frontend/components/icon_colour_extractor.dart';
-import 'package:mixlit/frontend/menu/slider_assignment.dart';
+import 'package:mixlit/backend/application/util/IconColourExtractor.dart';
+import 'package:mixlit/frontend/menus/AssignApplicationMenu.dart';
+import 'package:mixlit/frontend/Theme.dart'; // Import the theme
 import 'package:window_manager/window_manager.dart';
 
 class HomePage extends StatefulWidget {
   final bool isAutoStarted;
+  final Function(bool)? onThemeChanged;
 
-  const HomePage({super.key, this.isAutoStarted = false});
+  const HomePage(
+      {super.key,
+      this.isAutoStarted = false,
+      this.onThemeChanged,
+      required Future<void> Function() onSettingsChanged});
 
   @override
   _HomePageState createState() => _HomePageState();
@@ -39,26 +47,17 @@ class _HomePageState extends State<HomePage>
   late final DeviceEventHandler _deviceEventHandler;
   StreamSubscription? _initialHardwareValuesSubscription;
 
-  // App state
-  final List<double> _sliderValues = List.filled(5, 0.1);
-  List<ProcessVolume?> _assignedApps = List.filled(5, null);
+  final List<double> _sliderValues = List.filled(8, 0.1);
+  List<ProcessVolume?> _assignedApps = List.filled(8, null);
   final Map<String, Uint8List?> _appIcons = {};
   final Map<String, Uint8List?> _cachedAppIcons = {};
-  List<String> _sliderTags = List.filled(5, 'unassigned');
+  List<String> _sliderTags = List.filled(8, 'unassigned');
   bool _configLoaded = false;
 
   late final RateLimitedUpdater _uiUpdater;
   late final BatchedValueUpdater<double> _sliderUpdater;
 
-  // Colouring
   final Map<int, Color> _sliderColors = {};
-
-  final Color _defaultAppColor = const Color.fromARGB(255, 188, 184, 147);
-  final Color _deviceVolumeColor = const Color.fromARGB(255, 188, 184, 147);
-  final Color _masterVolumeColor = const Color.fromARGB(255, 188, 184, 147);
-  final Color _activeAppColor = const Color.fromARGB(255, 69, 205, 255);
-  final Color _unassignedColor = const Color.fromARGB(255, 51, 51, 51);
-  final Color _missingAppColor = const Color.fromARGB(255, 249, 244, 235);
 
   final Map<int, AnimationController> _pulseControllers = {};
   final Map<int, Animation<double>> _pulseAnimations = {};
@@ -83,7 +82,7 @@ class _HomePageState extends State<HomePage>
     );
 
     _muteButtonController = MuteButtonController(
-      buttonCount: 5,
+      buttonCount: 8,
       vsync: this,
       onVolumeAdjustment: _handleDirectVolumeAdjustment,
       onSliderValueUpdated: _updateSliderValue,
@@ -128,15 +127,6 @@ class _HomePageState extends State<HomePage>
 
       _deviceEventHandler.initialize();
 
-      //_ledController = LEDController(
-      //  serialWorker: _worker,
-      //  applicationManager: _applicationManager,
-      //  sliderValues: _sliderValues,
-      //  sliderTags: _sliderTags,
-      //  appIcons: _appIcons,
-      //  isAnimated: _useAnimatedLEDs,
-      //);
-
       _connectionHandler.initializeDeviceConnection(
           context, _worker.connectionState.first);
 
@@ -146,12 +136,12 @@ class _HomePageState extends State<HomePage>
         _configLoaded = true;
       });
 
-      //_ledController.updateAllLEDs();
-
       _checkForUpdates();
 
       _startPeriodicUIUpdates();
     });
+
+    _debugPrintSerialData();
   }
 
   void _startPeriodicUIUpdates() {
@@ -181,7 +171,6 @@ class _HomePageState extends State<HomePage>
     _pulseControllers[sliderIndex] = controller;
     _pulseAnimations[sliderIndex] = animation;
 
-    // Add listener to trigger rebuilds only when needed
     animation.addListener(() {
       if (mounted) {
         setState(() {});
@@ -207,20 +196,17 @@ class _HomePageState extends State<HomePage>
         final hasMissingApp =
             _applicationManager.missingApplications.containsKey(i);
 
-        // Check if app status changed (missing -> active or vice versa)
         if ((currentApp == null && managerApp != null) ||
             (currentApp != null && managerApp == null)) {
           _assignedApps[i] = managerApp;
           needsUpdate = true;
 
           if (managerApp != null) {
-            // App became active - dispose pulse animation
             _disposePulseAnimation(i);
             _loadIconForApp(managerApp.processPath);
           }
         }
 
-        // Handle pulse animations for missing apps
         if (hasMissingApp && !_pulseControllers.containsKey(i)) {
           _createPulseAnimation(i);
           needsUpdate = true;
@@ -269,7 +255,13 @@ class _HomePageState extends State<HomePage>
 
   @override
   void onWindowClose() async {
-    windowManager.hide();
+    final minimizeToTray = await SettingsManager.getMinimizeToTray();
+
+    if (minimizeToTray) {
+      windowManager.hide();
+    } else {
+      _exitApp();
+    }
   }
 
   Future<void> _loadIconForApp(String processPath) async {
@@ -295,13 +287,13 @@ class _HomePageState extends State<HomePage>
       final sliderTag = _sliderTags[i];
 
       if (sliderTag == ConfigManager.TAG_DEFAULT_DEVICE) {
-        _sliderColors[i] = _deviceVolumeColor;
+        _sliderColors[i] = AppTheme.deviceVolumeColor;
       } else if (sliderTag == ConfigManager.TAG_MASTER_VOLUME) {
-        _sliderColors[i] = _masterVolumeColor;
+        _sliderColors[i] = AppTheme.masterVolumeColor;
       } else if (sliderTag == ConfigManager.TAG_ACTIVE_APP) {
-        _sliderColors[i] = _activeAppColor;
+        _sliderColors[i] = AppTheme.activeAppColor;
       } else if (sliderTag == ConfigManager.TAG_UNASSIGNED) {
-        _sliderColors[i] = _unassignedColor;
+        _sliderColors[i] = AppTheme.unassignedColor;
       } else if (sliderTag == ConfigManager.TAG_APP) {
         if (app != null) {
           await _loadIconForApp(app.processPath);
@@ -309,14 +301,14 @@ class _HomePageState extends State<HomePage>
           if (_appIcons[app.processPath] != null) {
             _sliderColors[i] = await IconColorExtractor.extractDominantColor(
                 _appIcons[app.processPath]!, app.processPath,
-                defaultColor: _defaultAppColor);
+                defaultColor: AppTheme.defaultAppColor);
           } else {
-            _sliderColors[i] = _defaultAppColor;
+            _sliderColors[i] = AppTheme.defaultAppColor;
           }
         } else {
           final missingApp = _applicationManager.missingApplications[i];
           if (missingApp != null) {
-            _sliderColors[i] = _missingAppColor;
+            _sliderColors[i] = AppTheme.missingAppColor;
 
             if (missingApp.cachedIconPath != null) {
               final cachedIcon =
@@ -327,15 +319,15 @@ class _HomePageState extends State<HomePage>
                 _sliderColors[i] =
                     await IconColorExtractor.extractDominantColor(
                         cachedIcon, missingApp.processName,
-                        defaultColor: _missingAppColor);
+                        defaultColor: AppTheme.missingAppColor);
               }
             }
           } else {
-            _sliderColors[i] = _defaultAppColor;
+            _sliderColors[i] = AppTheme.defaultAppColor;
           }
         }
       } else {
-        _sliderColors[i] = _defaultAppColor;
+        _sliderColors[i] = AppTheme.defaultAppColor;
       }
     }
   }
@@ -376,10 +368,11 @@ class _HomePageState extends State<HomePage>
   void _handleSliderData(Map<int, int> data) {
     if (!_configLoaded) return;
 
+    _applicationManager.enableVolumeRestorationForUserAction();
+
     data.forEach((sliderId, sliderValue) {
       if (sliderId >= 0 && sliderId < _sliderValues.length) {
         _sliderUpdater.updateValue(sliderId.toString(), sliderValue.toDouble());
-        //_ledController.updateSliderValue(sliderId, sliderValue.toDouble());
 
         _muteButtonController.updatePreviousVolumeValue(
             sliderId, sliderValue.toDouble());
@@ -414,13 +407,6 @@ class _HomePageState extends State<HomePage>
     if (!_configLoaded) return;
 
     if (isPressed) {
-      if (_muteButtonController.muteStates[buttonIndex]) {
-        _sliderValues[buttonIndex] =
-            _muteButtonController.previousVolumeValues[buttonIndex];
-      } else {
-        _sliderValues[buttonIndex] = MuteButtonController.muteVolume;
-      }
-
       _muteButtonController.handleButtonDown(buttonIndex);
       _muteButtonController.checkLongPress(buttonIndex);
 
@@ -436,6 +422,8 @@ class _HomePageState extends State<HomePage>
       _connectionHandler.showConnectionNotification(context, connected);
 
       if (connected && _configLoaded) {
+        _applicationManager.enableVolumeRestorationOnDeviceConnect();
+
         _initializeConfiguration().then((_) {
           Future.delayed(const Duration(milliseconds: 1000), () {
             if (_worker.isDeviceConnected && mounted) {
@@ -453,6 +441,8 @@ class _HomePageState extends State<HomePage>
   }
 
   void _handleVolumeAdjustment(int sliderId, double value) {
+    _applicationManager.enableVolumeRestorationForUserAction();
+
     _sliderValues[sliderId] = value;
 
     _muteButtonController.updatePreviousVolumeValue(sliderId, value);
@@ -465,7 +455,6 @@ class _HomePageState extends State<HomePage>
       _volumeController.storeVolumeValue(sliderId, value);
     }
 
-    //TODO: save volume to config
     _applicationManager.updateSliderConfig(
         sliderId, value, _muteButtonController.muteStates[sliderId]);
 
@@ -485,6 +474,8 @@ class _HomePageState extends State<HomePage>
   }
 
   void _toggleMute(int index) {
+    _applicationManager.enableVolumeRestorationForUserAction();
+
     if (!_muteButtonController.muteStates[index]) {
       _muteButtonController.previousVolumeValues[index] = _sliderValues[index];
       _volumeController.storeVolumeValue(index, _sliderValues[index]);
@@ -492,7 +483,6 @@ class _HomePageState extends State<HomePage>
 
     _muteButtonController.toggleMuteState(index);
 
-    //saves mute state
     _applicationManager.updateSliderConfig(
         index, _sliderValues[index], _muteButtonController.muteStates[index]);
 
@@ -502,7 +492,7 @@ class _HomePageState extends State<HomePage>
   void _restoreHardwareValues(Map<int, int> hardwareValues) {
     if (!_configLoaded) return;
 
-    print('Restoring hardware values: $hardwareValues');
+    print('Restoring hardware values from device: $hardwareValues');
 
     hardwareValues.forEach((sliderId, hardwareValue) {
       if (sliderId >= 0 && sliderId < _sliderValues.length) {
@@ -542,7 +532,6 @@ class _HomePageState extends State<HomePage>
     _worker.dispose();
     _muteButtonController.dispose();
     if (_configLoaded) {
-      //_ledController.dispose();
       _deviceEventHandler.dispose();
       _volumeController.dispose();
       _connectionHandler.dispose();
@@ -569,7 +558,6 @@ class _HomePageState extends State<HomePage>
     if (previousAssignedApp != _assignedApps[index] ||
         previousTag != _sliderTags[index]) {
       await _updateSliderColor(index);
-      //_ledController.updateSliderLEDs(index);
     }
 
     _initialHardwareValuesSubscription =
@@ -581,30 +569,22 @@ class _HomePageState extends State<HomePage>
     setState(() {
       _volumeController.updateSliderTags(_sliderTags);
       _volumeController.updateAssignedApps(_assignedApps);
-      //_ledController.updateSliderTags(_sliderTags);
       _configLoaded = true;
     });
   }
-
-  //void _toggleLEDAnimation() {
-  //  setState(() {
-  //    _useAnimatedLEDs = !_useAnimatedLEDs;
-  //    _ledController.setAnimated(_useAnimatedLEDs);
-  //  });
-  //}
 
   Future<void> _updateSliderColor(int index) async {
     final app = _assignedApps[index];
     final sliderTag = _sliderTags[index];
 
     if (sliderTag == ConfigManager.TAG_DEFAULT_DEVICE) {
-      _sliderColors[index] = _deviceVolumeColor;
+      _sliderColors[index] = AppTheme.deviceVolumeColor;
     } else if (sliderTag == ConfigManager.TAG_MASTER_VOLUME) {
-      _sliderColors[index] = _masterVolumeColor;
+      _sliderColors[index] = AppTheme.masterVolumeColor;
     } else if (sliderTag == ConfigManager.TAG_ACTIVE_APP) {
-      _sliderColors[index] = _activeAppColor;
+      _sliderColors[index] = AppTheme.activeAppColor;
     } else if (sliderTag == ConfigManager.TAG_UNASSIGNED) {
-      _sliderColors[index] = _unassignedColor;
+      _sliderColors[index] = AppTheme.unassignedColor;
     } else if (sliderTag == ConfigManager.TAG_APP) {
       if (app != null) {
         await _loadIconForApp(app.processPath);
@@ -612,23 +592,21 @@ class _HomePageState extends State<HomePage>
         if (_appIcons[app.processPath] != null) {
           _sliderColors[index] = await IconColorExtractor.extractDominantColor(
               _appIcons[app.processPath]!, app.processPath,
-              defaultColor: _defaultAppColor);
+              defaultColor: AppTheme.defaultAppColor);
         } else {
-          _sliderColors[index] = _defaultAppColor;
+          _sliderColors[index] = AppTheme.defaultAppColor;
         }
       } else {
         final missingApp = _applicationManager.missingApplications[index];
         if (missingApp != null) {
-          _sliderColors[index] = _missingAppColor;
+          _sliderColors[index] = AppTheme.missingAppColor;
         } else {
-          _sliderColors[index] = _defaultAppColor;
+          _sliderColors[index] = AppTheme.defaultAppColor;
         }
       }
     } else {
-      _sliderColors[index] = _defaultAppColor;
+      _sliderColors[index] = AppTheme.defaultAppColor;
     }
-
-    // _ledController.updateSliderLEDs(index);
   }
 
   Widget _buildSliderIcon(int index) {
@@ -638,11 +616,14 @@ class _HomePageState extends State<HomePage>
         _applicationManager.missingApplications.containsKey(index);
 
     if (sliderTag == ConfigManager.TAG_DEFAULT_DEVICE) {
-      return const Icon(Icons.speaker, color: Colors.white, size: 32);
+      return Icon(Icons.speaker,
+          color: Colors.white, size: AppTheme.iconSizeLarge);
     } else if (sliderTag == ConfigManager.TAG_MASTER_VOLUME) {
-      return const Icon(Icons.volume_up, color: Colors.white, size: 32);
+      return Icon(Icons.volume_up,
+          color: Colors.white, size: AppTheme.iconSizeLarge);
     } else if (sliderTag == ConfigManager.TAG_ACTIVE_APP) {
-      return const Icon(Icons.app_registration, color: Colors.white, size: 32);
+      return Icon(Icons.app_registration,
+          color: Colors.white, size: AppTheme.iconSizeLarge);
     } else if (sliderTag == ConfigManager.TAG_APP) {
       if (app != null) {
         final appPath = app.processPath;
@@ -657,10 +638,48 @@ class _HomePageState extends State<HomePage>
         }
       }
 
-      return const Icon(Icons.apps, color: Colors.white, size: 32);
+      return Icon(Icons.apps,
+          color: Colors.white, size: AppTheme.iconSizeLarge);
     } else {
-      return const Icon(Icons.add_circle_outline,
-          color: Colors.white, size: 32);
+      return Icon(Icons.add_circle_outline,
+          color: Colors.white, size: AppTheme.iconSizeLarge);
+    }
+  }
+
+  Widget _buildDialIcon(int index) {
+    final sliderTag = _sliderTags[index];
+    final app = _assignedApps[index];
+    final hasMissingApp =
+        _applicationManager.missingApplications.containsKey(index);
+
+    if (sliderTag == ConfigManager.TAG_DEFAULT_DEVICE) {
+      return Icon(Icons.speaker,
+          color: Colors.white, size: AppTheme.iconSizeMedium);
+    } else if (sliderTag == ConfigManager.TAG_MASTER_VOLUME) {
+      return Icon(Icons.volume_up,
+          color: Colors.white, size: AppTheme.iconSizeMedium);
+    } else if (sliderTag == ConfigManager.TAG_ACTIVE_APP) {
+      return Icon(Icons.app_registration,
+          color: Colors.white, size: AppTheme.iconSizeMedium);
+    } else if (sliderTag == ConfigManager.TAG_APP) {
+      if (app != null) {
+        final appPath = app.processPath;
+        if (_appIcons.containsKey(appPath) && _appIcons[appPath] != null) {
+          return ApplicationIcon(iconData: _appIcons[appPath]!);
+        }
+      } else if (hasMissingApp) {
+        final missingApp = _applicationManager.missingApplications[index]!;
+        final cachedIcon = _cachedAppIcons[missingApp.processName];
+        if (cachedIcon != null) {
+          return ApplicationIcon(iconData: cachedIcon);
+        }
+      }
+
+      return Icon(Icons.apps,
+          color: Colors.white, size: AppTheme.iconSizeMedium);
+    } else {
+      return Icon(Icons.add_circle_outline,
+          color: Colors.white, size: AppTheme.iconSizeMedium);
     }
   }
 
@@ -674,6 +693,33 @@ class _HomePageState extends State<HomePage>
       return 'Master\nVolume';
     } else if (sliderTag == ConfigManager.TAG_ACTIVE_APP) {
       return 'Active\nApp';
+    } else if (sliderTag == ConfigManager.TAG_APP) {
+      if (app != null) {
+        final appName = app.processPath.split(r'\').last;
+        String title = appName.replaceAll('.exe', '');
+        title = title[0].toUpperCase() + title.substring(1);
+        return title;
+      } else {
+        final missingApp = _applicationManager.missingApplications[index];
+        if (missingApp != null) {
+          return missingApp.displayName;
+        }
+      }
+    }
+
+    return 'N/A';
+  }
+
+  String _buildDialTitle(int index) {
+    final sliderTag = _sliderTags[index];
+    final app = _assignedApps[index];
+
+    if (sliderTag == ConfigManager.TAG_DEFAULT_DEVICE) {
+      return 'Device';
+    } else if (sliderTag == ConfigManager.TAG_MASTER_VOLUME) {
+      return 'Master Volume';
+    } else if (sliderTag == ConfigManager.TAG_ACTIVE_APP) {
+      return 'Active App';
     } else if (sliderTag == ConfigManager.TAG_APP) {
       if (app != null) {
         final appName = app.processPath.split(r'\').last;
@@ -709,8 +755,28 @@ class _HomePageState extends State<HomePage>
     await Updater().checkAndShowUpdateDialog(context);
   }
 
-  void _onSettingsPressed() {
-    print('*something productive happened here*');
+  void _onSettingsPressed() async {
+    await showSettingsDialog(
+      context,
+      rawDataStream: _worker.rawData,
+      sliderDataStream: _worker.sliderData,
+      buttonDataStream: _worker.buttonData,
+      onThemeChanged: widget.onThemeChanged,
+    );
+  }
+
+  void _debugPrintSerialData() {
+    _worker.rawData.listen((data) {
+      print('HomePage - Raw data: $data');
+    });
+
+    _worker.sliderData.listen((data) {
+      print('HomePage - Slider data: $data');
+    });
+
+    _worker.buttonData.listen((data) {
+      print('HomePage - Button data: $data');
+    });
   }
 
   void _onClosePressed() {
@@ -720,20 +786,22 @@ class _HomePageState extends State<HomePage>
   @override
   Widget build(BuildContext context) {
     final bool isDarkMode = Theme.of(context).brightness == Brightness.dark;
+
     if (!_configLoaded) {
       return DragToMoveArea(
         child: Scaffold(
-          backgroundColor:
-              isDarkMode ? const Color(0xFF1E1E1E) : const Color(0xFFF5F5F5),
-          body: const Center(
+          backgroundColor: AppTheme.getBackgroundColor(isDarkMode),
+          body: Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                CircularProgressIndicator(),
-                SizedBox(height: 20),
+                const CircularProgressIndicator(),
+                SizedBox(height: AppTheme.spacingLarge),
                 Text(
                   'Loading configuration...',
-                  style: TextStyle(fontFamily: 'BitstreamVeraSans'),
+                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                        color: AppTheme.getPrimaryTextColor(isDarkMode),
+                      ),
                 ),
               ],
             ),
@@ -744,12 +812,10 @@ class _HomePageState extends State<HomePage>
 
     return DragToMoveArea(
       child: Scaffold(
-        backgroundColor: isDarkMode
-            ? const Color(0xFF1E1E1E)
-            : const Color.fromARGB(255, 214, 214, 214),
+        backgroundColor: AppTheme.getSecondaryBackgroundColor(isDarkMode),
         body: SafeArea(
           child: Padding(
-            padding: const EdgeInsets.all(16.0),
+            padding: EdgeInsets.all(AppTheme.spacingMedium),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -757,37 +823,34 @@ class _HomePageState extends State<HomePage>
                   children: [
                     Row(
                       children: [
-                        // Left spacer to keep logo centered
                         const SizedBox(width: 150),
 
-                        // Center logo and title
+                        //logo & title
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
                               Image.asset(
                                 'lib/frontend/assets/images/logo/mixlit_full.png',
-                                height: 60,
+                                height: AppTheme.iconSizeXLarge,
                                 fit: BoxFit.contain,
                               ),
-                              const SizedBox(height: 8),
+                              SizedBox(height: AppTheme.spacingSmall),
                               Text(
                                 'Volume Mixer Thingy Majig 9000',
-                                style: TextStyle(
-                                  fontFamily: 'BitstreamVeraSans',
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.w100,
-                                  letterSpacing: 1,
-                                  color: isDarkMode
-                                      ? Colors.white
-                                      : const Color.fromARGB(255, 92, 92, 92),
-                                ),
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .headlineMedium
+                                    ?.copyWith(
+                                      color: AppTheme.getPrimaryTextColor(
+                                          isDarkMode),
+                                    ),
                               ),
                             ],
                           ),
                         ),
 
-                        //Settings and close button
+                        //Settings & close button
                         SizedBox(
                           width: 150,
                           child: Align(
@@ -795,55 +858,48 @@ class _HomePageState extends State<HomePage>
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                // Settings button
+                                //Settings button
                                 Material(
                                   color: Colors.transparent,
                                   child: InkWell(
                                     onTap: _onSettingsPressed,
-                                    borderRadius: BorderRadius.circular(20),
+                                    borderRadius: BorderRadius.circular(
+                                        AppTheme.borderRadiusLarge),
                                     child: Container(
-                                      padding: const EdgeInsets.all(8),
-                                      decoration: BoxDecoration(
-                                        color: isDarkMode
-                                            ? Colors.white.withOpacity(0.1)
-                                            : Colors.black.withOpacity(0.1),
-                                        borderRadius: BorderRadius.circular(20),
-                                        border: Border.all(
-                                          color: isDarkMode
-                                              ? Colors.white.withOpacity(0.2)
-                                              : Colors.black.withOpacity(0.2),
-                                        ),
-                                      ),
+                                      padding:
+                                          EdgeInsets.all(AppTheme.spacingSmall),
+                                      decoration: AppTheme.getButtonDecoration(
+                                          isDarkMode),
                                       child: Icon(
                                         Icons.settings,
-                                        color: isDarkMode
-                                            ? Colors.white.withOpacity(0.8)
-                                            : Colors.black.withOpacity(0.8),
-                                        size: 20,
+                                        color: AppTheme.getPrimaryTextColor(
+                                                isDarkMode)
+                                            .withOpacity(
+                                                AppTheme.opacityAlmostOpaque),
+                                        size: AppTheme.iconSizeMedium,
                                       ),
                                     ),
                                   ),
                                 ),
-                                const SizedBox(width: 8),
+                                SizedBox(width: AppTheme.spacingSmall),
                                 //Close button
                                 Material(
                                   color: Colors.transparent,
                                   child: InkWell(
                                     onTap: _onClosePressed,
-                                    borderRadius: BorderRadius.circular(20),
+                                    borderRadius: BorderRadius.circular(
+                                        AppTheme.borderRadiusLarge),
                                     child: Container(
-                                      padding: const EdgeInsets.all(8),
-                                      decoration: BoxDecoration(
-                                        color: Colors.red.withOpacity(0.1),
-                                        borderRadius: BorderRadius.circular(20),
-                                        border: Border.all(
-                                          color: Colors.red.withOpacity(0.3),
-                                        ),
-                                      ),
+                                      padding:
+                                          EdgeInsets.all(AppTheme.spacingSmall),
+                                      decoration: AppTheme.getButtonDecoration(
+                                          isDarkMode,
+                                          isDestructive: true),
                                       child: Icon(
                                         Icons.close,
-                                        color: Colors.red.withOpacity(0.8),
-                                        size: 20,
+                                        color: AppTheme.errorColor.withOpacity(
+                                            AppTheme.opacityAlmostOpaque),
+                                        size: AppTheme.iconSizeMedium,
                                       ),
                                     ),
                                   ),
@@ -855,7 +911,7 @@ class _HomePageState extends State<HomePage>
                       ],
                     ),
 
-                    //connection status Indicator
+                    //connection status indicator
                     Positioned(
                       left: 0,
                       top: 0,
@@ -865,55 +921,35 @@ class _HomePageState extends State<HomePage>
                         child: ListenableBuilder(
                           listenable: _connectionHandler,
                           builder: (context, child) {
+                            final isConnected =
+                                _connectionHandler.isCurrentlyConnected;
                             return Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 16, vertical: 8),
-                              decoration: BoxDecoration(
-                                color: _connectionHandler.isCurrentlyConnected
-                                    ? Colors.green.withOpacity(0.1)
-                                    : Colors.red.withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(30),
-                                border: Border.all(
-                                  color: _connectionHandler.isCurrentlyConnected
-                                      ? Colors.green.withOpacity(0.3)
-                                      : Colors.red.withOpacity(0.3),
-                                ),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: Colors.black.withOpacity(0.1),
-                                    blurRadius: 4,
-                                    offset: const Offset(0, 2),
-                                  ),
-                                ],
-                              ),
+                              padding: EdgeInsets.symmetric(
+                                  horizontal: AppTheme.spacingMedium,
+                                  vertical: AppTheme.spacingSmall),
+                              decoration: AppTheme.getStatusIndicatorDecoration(
+                                  isConnected, isDarkMode),
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   Icon(
-                                    _connectionHandler.isCurrentlyConnected
+                                    isConnected
                                         ? Icons.usb_rounded
                                         : Icons.usb_off_rounded,
-                                    color:
-                                        _connectionHandler.isCurrentlyConnected
-                                            ? Colors.green
-                                            : Colors.red,
-                                    size: 18,
+                                    color: AppTheme.getConnectionColor(
+                                        isConnected),
+                                    size: AppTheme.iconSizeSmall,
                                   ),
-                                  const SizedBox(width: 4),
+                                  SizedBox(width: AppTheme.spacingXSmall),
                                   Text(
-                                    _connectionHandler.isCurrentlyConnected
-                                        ? 'Connected'
-                                        : 'Disconnected',
-                                    style: TextStyle(
-                                      fontFamily: 'BitstreamVeraSans',
-                                      color: _connectionHandler
-                                              .isCurrentlyConnected
-                                          ? Colors.green
-                                          : Colors.red,
-                                      fontWeight: FontWeight.w500,
-                                      fontSize: 14,
-                                      letterSpacing: 0.3,
-                                    ),
+                                    isConnected ? 'Connected' : 'Disconnected',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodyMedium
+                                        ?.copyWith(
+                                          color: AppTheme.getConnectionColor(
+                                              isConnected),
+                                        ),
                                   ),
                                 ],
                               ),
@@ -925,9 +961,75 @@ class _HomePageState extends State<HomePage>
                   ],
                 ),
 
-                const SizedBox(height: 24),
+                SizedBox(height: AppTheme.spacingLarge),
 
-                //Sliders
+                //dial cards
+                SizedBox(
+                  height: AppTheme.dialCardHeight,
+                  child: Row(
+                    children: List.generate(3, (index) {
+                      final dialIndex = index +
+                          5; //TODO: Indices 5, 6, 7 for dials - make dynamic instead (firmware update needed)
+                      final int volumePercentage =
+                          (_sliderValues[dialIndex] / 1024 * 100).round();
+
+                      final Widget iconWidget = _buildDialIcon(dialIndex);
+                      final String title = _buildDialTitle(dialIndex);
+                      final bool isActive = _isSliderActive(dialIndex);
+                      final bool hasMissingApp = _applicationManager
+                          .missingApplications
+                          .containsKey(dialIndex);
+
+                      Color primaryColor;
+                      final sliderTag = _sliderTags[dialIndex];
+
+                      if (sliderTag == ConfigManager.TAG_DEFAULT_DEVICE) {
+                        primaryColor = AppTheme.deviceSliderColor;
+                      } else if (sliderTag == ConfigManager.TAG_MASTER_VOLUME) {
+                        primaryColor = AppTheme.masterSliderColor;
+                      } else if (sliderTag == ConfigManager.TAG_ACTIVE_APP) {
+                        primaryColor = AppTheme.activeSliderColor;
+                      } else if (sliderTag == ConfigManager.TAG_APP) {
+                        if (_assignedApps[dialIndex] != null) {
+                          primaryColor = AppTheme.appSliderColor;
+                        } else if (hasMissingApp) {
+                          primaryColor = AppTheme.missingAppColor;
+                        } else {
+                          primaryColor = AppTheme.unassignedSliderColor;
+                        }
+                      } else {
+                        primaryColor = AppTheme.unassignedSliderColor;
+                      }
+
+                      return Expanded(
+                        child: HorizontalDialCard(
+                          title: title,
+                          iconWidget: iconWidget,
+                          value: _sliderValues[dialIndex] / 1024,
+                          isActive: isActive,
+                          percentage: volumePercentage,
+                          accentColor: hasMissingApp
+                              ? AppTheme.missingAppColor
+                              : (_sliderColors[dialIndex] ?? primaryColor),
+                          accentOpacity: hasMissingApp &&
+                                  _pulseAnimations.containsKey(dialIndex)
+                              ? _pulseAnimations[dialIndex]!.value
+                              : 1.0,
+                          onDialChanged: (value) {
+                            final scaledValue = value * 1024;
+                            _handleVolumeAdjustment(dialIndex, scaledValue);
+                          },
+                          onTap: () => _selectApp(dialIndex),
+                          isDarkMode: isDarkMode,
+                        ),
+                      );
+                    }),
+                  ),
+                ),
+
+                SizedBox(height: AppTheme.spacingMedium),
+
+                //Vertical sliders
                 Expanded(
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -949,21 +1051,21 @@ class _HomePageState extends State<HomePage>
                       final sliderTag = _sliderTags[index];
 
                       if (sliderTag == ConfigManager.TAG_DEFAULT_DEVICE) {
-                        primaryColor = Colors.blue;
+                        primaryColor = AppTheme.deviceSliderColor;
                       } else if (sliderTag == ConfigManager.TAG_MASTER_VOLUME) {
-                        primaryColor = Colors.green;
+                        primaryColor = AppTheme.masterSliderColor;
                       } else if (sliderTag == ConfigManager.TAG_ACTIVE_APP) {
-                        primaryColor = Colors.purple;
+                        primaryColor = AppTheme.activeSliderColor;
                       } else if (sliderTag == ConfigManager.TAG_APP) {
                         if (_assignedApps[index] != null) {
-                          primaryColor = Colors.amber;
+                          primaryColor = AppTheme.appSliderColor;
                         } else if (hasMissingApp) {
-                          primaryColor = _missingAppColor;
+                          primaryColor = AppTheme.missingAppColor;
                         } else {
-                          primaryColor = Colors.grey;
+                          primaryColor = AppTheme.unassignedSliderColor;
                         }
                       } else {
-                        primaryColor = Colors.grey;
+                        primaryColor = AppTheme.unassignedSliderColor;
                       }
 
                       Widget sliderWidget = VerticalSliderCard(
@@ -974,7 +1076,7 @@ class _HomePageState extends State<HomePage>
                         isActive: isActive,
                         percentage: volumePercentage,
                         accentColor: hasMissingApp
-                            ? _missingAppColor
+                            ? AppTheme.missingAppColor
                             : (_sliderColors[index] ?? primaryColor),
                         accentOpacity:
                             hasMissingApp && _pulseAnimations.containsKey(index)
@@ -991,7 +1093,8 @@ class _HomePageState extends State<HomePage>
 
                       return Expanded(
                         child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 4.0),
+                          padding: EdgeInsets.symmetric(
+                              horizontal: AppTheme.spacingXSmall),
                           child: sliderWidget,
                         ),
                       );

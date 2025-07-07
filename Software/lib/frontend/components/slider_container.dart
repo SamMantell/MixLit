@@ -2,7 +2,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'painting/muted_red_line.dart';
 import 'package:mixlit/frontend/components/custom_slider.dart';
-import 'package:mixlit/backend/application/ConfigManager.dart';
+import 'package:mixlit/backend/application/data/ConfigManager.dart';
 
 class SliderContainer extends StatelessWidget {
   final double containerWidth;

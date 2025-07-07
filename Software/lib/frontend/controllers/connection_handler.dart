@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:mixlit/frontend/menu/dialog/warning.dart';
+import 'package:mixlit/frontend/menus/dialog/warning.dart';
 
 class ConnectionHandler extends ChangeNotifier {
   bool hasShownInitialDialog = false;

@@ -3,7 +3,7 @@ import 'dart:typed_data';
 import 'package:mixlit/backend/application/util/IconExtractor.dart';
 import 'package:path/path.dart' as path;
 import 'package:win32audio/win32audio.dart';
-import 'package:mixlit/backend/data/StorageManager.dart';
+import 'package:mixlit/backend/application/data/StorageManager.dart';
 
 class ConfigManager {
   static final ConfigManager _instance = ConfigManager._internal();

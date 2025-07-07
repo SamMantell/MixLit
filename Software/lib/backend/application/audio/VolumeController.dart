@@ -1,7 +1,7 @@
 import 'dart:async';
-import 'package:mixlit/backend/application/ApplicationManager.dart';
-import 'package:mixlit/backend/application/AppInstanceManager.dart';
-import 'package:mixlit/backend/application/ConfigManager.dart';
+import 'package:mixlit/backend/application/audio/ApplicationManager.dart';
+import 'package:mixlit/backend/application/audio/AppInstanceManager.dart';
+import 'package:mixlit/backend/application/data/ConfigManager.dart';
 import 'package:win32audio/win32audio.dart';
 
 class VolumeController {
@@ -16,7 +16,6 @@ class VolumeController {
   final Map<int, double> _pendingVolumeChanges = {};
 
   final Map<int, double> _storedVolumeValues = {};
-
   final Map<int, bool> _muteStates = {};
 
   static const double muteVolume = 0.0001;
@@ -113,12 +112,13 @@ class VolumeController {
       {bool fromRestore = false}) async {
     final tag = sliderTags[sliderId];
 
+    applicationManager.sliderValues[sliderId] = value;
+
     if (tag == ConfigManager.TAG_DEFAULT_DEVICE ||
         tag == ConfigManager.TAG_MASTER_VOLUME) {
       int volumeLevel = ((value / 1024) * 100).round();
-      Audio.setVolume(volumeLevel / 100, AudioDeviceType.output);
 
-      applicationManager.sliderValues[sliderId] = value;
+      Audio.setVolume(volumeLevel / 100, AudioDeviceType.output);
     } else if (tag == ConfigManager.TAG_APP && assignedApps[sliderId] != null) {
       final app = assignedApps[sliderId];
       if (app != null) {
@@ -144,29 +144,29 @@ class VolumeController {
             print('Fallback volume adjustment failed: $fallbackError');
           }
         }
-
-        applicationManager.sliderValues[sliderId] = value;
       }
-    } else if (tag == ConfigManager.TAG_ACTIVE_APP) {
-      applicationManager.sliderValues[sliderId] = value;
-    }
+    } else if (tag == ConfigManager.TAG_ACTIVE_APP) {}
 
-    // Only auto-detect mute state if NOT restoring from config
     bool isMuted =
         fromRestore ? _muteStates[sliderId] ?? false : (value <= muteVolume);
     applicationManager.updateSliderConfig(sliderId, value, isMuted);
   }
 
   Future<void> setMuteState(int sliderId, bool isMuted) async {
+    applicationManager.enableVolumeRestorationForUserAction();
+
     updateMuteState(sliderId, isMuted);
 
     if (isMuted) {
       _storedVolumeValues[sliderId] = applicationManager.sliderValues[sliderId];
+      await Future.delayed(const Duration(milliseconds: 10));
       await directVolumeAdjustment(sliderId, muteVolume);
     } else {
+      await Future.delayed(const Duration(milliseconds: 10));
       final storedValue = getStoredVolumeValue(sliderId);
       await directVolumeAdjustment(sliderId, storedValue);
     }
+
     applicationManager.setMuteState(sliderId, isMuted);
   }
 

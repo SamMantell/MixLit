@@ -1,7 +1,9 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:mixlit/frontend/home_page.dart';
-import 'package:mixlit/frontend/theme/app_theme.dart';
+import 'package:mixlit/frontend/pages/HomePage.dart';
+import 'package:mixlit/frontend/Theme.dart';
+import 'package:mixlit/frontend/menus/SettingsMenu.dart';
+import 'package:tray_manager/tray_manager.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:launch_at_startup/launch_at_startup.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -18,7 +20,6 @@ class StartupConfig {
   static Future<void> setAutoStartupEnabled(bool enabled) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_autoStartupEnabledKey, enabled);
-
     if (enabled) {
       await launchAtStartup.enable();
     } else {
@@ -42,10 +43,9 @@ Future<void> main(List<String> args) async {
   await windowManager.ensureInitialized();
 
   final bool isAutoStarted = args.contains('--auto-start');
-
-  //TODO: Settings page for togglable startup/hide behaviopur
   final bool hideOnStartup = await StartupConfig.hideOnStartup;
   final bool autoStartupEnabled = await StartupConfig.autoStartupEnabled;
+  final bool minimizeToTray = await SettingsManager.getMinimizeToTray();
 
   WindowOptions windowOptions = const WindowOptions(
     size: Size(780, 880),
@@ -64,7 +64,7 @@ Future<void> main(List<String> args) async {
     }
   });
 
-  windowManager.setPreventClose(true);
+  windowManager.setPreventClose(minimizeToTray);
 
   launchAtStartup.setup(
     appName: "MixLit",
@@ -81,19 +81,73 @@ Future<void> main(List<String> args) async {
   runApp(MyApp(isAutoStarted: isAutoStarted));
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   final bool isAutoStarted;
 
   const MyApp({super.key, required this.isAutoStarted});
 
   @override
+  _MyAppState createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> with WindowListener {
+  ThemeMode _themeMode = ThemeMode.system;
+
+  @override
+  void initState() {
+    super.initState();
+    windowManager.addListener(this);
+    _loadThemePreference();
+  }
+
+  @override
+  void dispose() {
+    windowManager.removeListener(this);
+    super.dispose();
+  }
+
+  Future<void> _loadThemePreference() async {
+    final isDark = await SettingsManager.getDarkTheme();
+    setState(() {
+      _themeMode = isDark ? ThemeMode.dark : ThemeMode.light;
+    });
+  }
+
+  void _updateThemeMode(bool isDark) {
+    setState(() {
+      _themeMode = isDark ? ThemeMode.dark : ThemeMode.light;
+    });
+  }
+
+  @override
+  void onWindowClose() async {
+    final bool minimizeToTray = await SettingsManager.getMinimizeToTray();
+
+    if (minimizeToTray) {
+      await windowManager.hide();
+    } else {
+      trayManager.destroy();
+      windowManager.destroy();
+    }
+  }
+
+  Future<void> updatePreventCloseSetting() async {
+    final bool minimizeToTray = await SettingsManager.getMinimizeToTray();
+    windowManager.setPreventClose(minimizeToTray);
+  }
+
+  @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'MixLit',
-      themeMode: ThemeMode.system,
+      themeMode: _themeMode,
       theme: AppTheme.lightTheme(),
       darkTheme: AppTheme.darkTheme(),
-      home: HomePage(isAutoStarted: isAutoStarted),
+      home: HomePage(
+        isAutoStarted: widget.isAutoStarted,
+        onThemeChanged: _updateThemeMode,
+        onSettingsChanged: updatePreventCloseSetting,
+      ),
       debugShowCheckedModeBanner: false,
     );
   }

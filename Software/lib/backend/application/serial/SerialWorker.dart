@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:isolate';
-import 'package:mixlit/backend/serial/connection/SerialConnectionManager.dart';
+import 'package:mixlit/backend/application/serial/SerialConnectionManager.dart';
 
 class SerialWorker {
   final _sliderDataController = StreamController<Map<int, int>>.broadcast();

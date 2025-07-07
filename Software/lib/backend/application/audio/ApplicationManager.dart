@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:mixlit/backend/application/ConfigManager.dart';
-import 'package:mixlit/backend/data/StorageManager.dart';
+import 'package:mixlit/backend/application/data/ConfigManager.dart';
+import 'package:mixlit/backend/application/data/StorageManager.dart';
 import 'package:win32audio/win32audio.dart';
 
 class MissingApp {
@@ -40,7 +40,7 @@ class ApplicationManager {
   final Map<int, int> _failedValidationCounts = {};
   static const int _maxFailedValidations = 3;
 
-  // Rate limiting due to windows buffering volume requests
+  // rate limiting due to windows buffering volume requests
   static const int RATE_LIMIT_MS = 40;
   DateTime _lastVolumeAdjustment = DateTime.now();
   Timer? _pendingVolumeTimer;
@@ -50,6 +50,11 @@ class ApplicationManager {
   bool _isConfigLoaded = false;
   final Completer<void> _configLoadCompleter = Completer<void>();
 
+  // flags for when volume restoration should occur
+  bool _allowVolumeRestoration = false;
+  bool _isInitialStartup = true;
+  bool _deviceJustConnected = false;
+
   final ConfigManager _configManager = ConfigManager.instance;
 
   ApplicationManager() {
@@ -58,6 +63,19 @@ class ApplicationManager {
   }
 
   Future<void> get configLoaded => _configLoadCompleter.future;
+
+  void enableVolumeRestorationOnDeviceConnect() {
+    print('Device connected - enabling volume restoration');
+    _deviceJustConnected = true;
+    _allowVolumeRestoration = true;
+    _isInitialStartup = false;
+  }
+
+  void enableVolumeRestorationForUserAction() {
+    if (!_isInitialStartup) {
+      _allowVolumeRestoration = true;
+    }
+  }
 
   void _startAudioSessionMonitoring() {
     _audioSessionMonitor = Timer.periodic(_monitorInterval, (timer) async {
@@ -162,7 +180,9 @@ class ApplicationManager {
 
       final currentStoredVolume = sliderValues[sliderIndex] / 1024;
 
-      Audio.setAudioMixerVolume(app.processId, currentStoredVolume);
+      if (_allowVolumeRestoration) {
+        Audio.setAudioMixerVolume(app.processId, currentStoredVolume);
+      }
 
       return true;
     } catch (e) {
@@ -227,12 +247,16 @@ class ApplicationManager {
           final isMuted = missingApp.isMuted;
 
           print(
-              'Restoring volume for found app: currentSliderValue=$currentSliderValue, muted=$isMuted');
+              'Found app restoration: currentSliderValue=$currentSliderValue, muted=$isMuted, allowVolumeRestoration=$_allowVolumeRestoration');
 
-          Timer(const Duration(milliseconds: 500), () async {
-            await _restoreVolumeForApp(
-                sliderIndex, matchingApp, currentSliderValue, isMuted);
-          });
+          if (_allowVolumeRestoration) {
+            Timer(const Duration(milliseconds: 500), () async {
+              await _restoreVolumeForApp(
+                  sliderIndex, matchingApp, currentSliderValue, isMuted);
+            });
+          } else {
+            print('Skipping volume restoration during startup for found app');
+          }
 
           foundApps.add(sliderIndex);
         }
@@ -379,37 +403,20 @@ class ApplicationManager {
               runningApps, config['processName']);
 
           if (matchingApp != null) {
-            //found in enumeration?? assume controllable
             assignedApplications[i] = matchingApp;
             _recentlyRestoredApps[i] = DateTime.now();
             print(
-                'Found and assigned app ${matchingApp.processPath} to slider $i');
+                'Found and assigned app ${matchingApp.processPath} to slider $i (NO volume restoration during startup)');
 
-            final volumeValue = sliderValues[i];
-            final isMuted = muteStates[i];
-
-            print(
-                'Restoring volume for slider $i: value=$volumeValue, muted=$isMuted');
-
-            Timer(Duration(milliseconds: 500 + (i * 100)), () async {
-              await _restoreVolumeForApp(i, matchingApp, volumeValue, isMuted);
-            });
+            //DONT restore volume during startup - just assign app
           } else {
             await _createMissingAppEntry(i, config);
           }
         } else if (sliderTag == ConfigManager.TAG_DEFAULT_DEVICE ||
             sliderTag == ConfigManager.TAG_MASTER_VOLUME) {
           print(
-              'Restoring device/master volume for slider $i: ${sliderValues[i]}');
-
-          final volumeValue = sliderValues[i];
-          final isMuted = muteStates[i];
-
-          if (isMuted) {
-            adjustDeviceVolume(0.0001, fromRestore: true);
-          } else {
-            adjustDeviceVolume(volumeValue, fromRestore: true);
-          }
+              'Device/master volume slider $i found - NO restoration during startup');
+          // DON'T restore device volume during startup
         } else if (sliderTag == ConfigManager.TAG_ACTIVE_APP) {
           print('Restored active app control for slider $i');
         } else {
@@ -419,7 +426,16 @@ class ApplicationManager {
 
       _isConfigLoaded = true;
       _configLoadCompleter.complete();
-      print('Configuration loading completed successfully');
+
+      // marks initial startup as complete after short delay
+      Timer(const Duration(seconds: 1), () {
+        _isInitialStartup = false;
+        print(
+            'Initial startup completed - volume restoration will be enabled for user actions');
+      });
+
+      print(
+          'Configuration loading completed successfully (volumes NOT restored)');
 
       if (missingApplications.isNotEmpty) {
         print(
@@ -558,6 +574,8 @@ class ApplicationManager {
         sliderValues[sliderIndex],
         ConfigManager.TAG_APP,
         muteStates[sliderIndex]);
+
+    enableVolumeRestorationForUserAction();
   }
 
   void assignSpecialFeatureToSlider(int sliderIndex, String featureTag) {
@@ -571,15 +589,18 @@ class ApplicationManager {
 
     _configManager.onSpecialSliderAssigned(sliderIndex, featureTag,
         sliderValues[sliderIndex], muteStates[sliderIndex]);
+
+    enableVolumeRestorationForUserAction();
   }
 
   void adjustVolume(int sliderIndex, double sliderValue,
       {bool fromRestore = false}) {
     sliderValues[sliderIndex] = sliderValue;
 
-    _pendingAppVolumes[sliderIndex] = sliderValue;
-
-    _scheduleVolumeUpdate();
+    if (_allowVolumeRestoration || _deviceJustConnected) {
+      _pendingAppVolumes[sliderIndex] = sliderValue;
+      _scheduleVolumeUpdate();
+    }
 
     final app = assignedApplications[sliderIndex];
     if (app != null) {
@@ -594,6 +615,12 @@ class ApplicationManager {
       _configManager.updateSliderConfig(
           sliderIndex, null, sliderTags[sliderIndex], muteState);
     }
+
+    if (_deviceJustConnected) {
+      _deviceJustConnected = false;
+    }
+
+    enableVolumeRestorationForUserAction();
   }
 
   void _scheduleVolumeUpdate() {
@@ -643,8 +670,10 @@ class ApplicationManager {
   }
 
   void adjustDeviceVolume(double sliderValue, {bool fromRestore = false}) {
-    _pendingDeviceVolume = sliderValue;
-    _scheduleVolumeUpdate();
+    if (_allowVolumeRestoration || _deviceJustConnected) {
+      _pendingDeviceVolume = sliderValue;
+      _scheduleVolumeUpdate();
+    }
 
     for (var i = 0; i < sliderTags.length; i++) {
       if (sliderTags[i] == ConfigManager.TAG_DEFAULT_DEVICE ||
@@ -662,6 +691,12 @@ class ApplicationManager {
         break;
       }
     }
+
+    if (_deviceJustConnected) {
+      _deviceJustConnected = false;
+    }
+
+    enableVolumeRestorationForUserAction();
   }
 
   void setMuteState(int sliderIndex, bool isMuted) {
@@ -669,6 +704,8 @@ class ApplicationManager {
     ProcessVolume? app = assignedApplications[sliderIndex];
     _configManager.updateSliderConfig(
         sliderIndex, app?.processPath, sliderTags[sliderIndex], isMuted);
+
+    enableVolumeRestorationForUserAction();
   }
 
   void updateSliderConfig(int sliderIndex, double value, bool isMuted) {
@@ -680,6 +717,8 @@ class ApplicationManager {
 
     _configManager.updateSliderConfig(
         sliderIndex, app?.processPath, tag, isMuted);
+
+    enableVolumeRestorationForUserAction();
   }
 
   void resetSliderConfiguration(int sliderIndex) {
@@ -695,6 +734,8 @@ class ApplicationManager {
     _configManager.removeSliderConfig(sliderIndex);
 
     print('Slider $sliderIndex reset and configuration removed');
+
+    enableVolumeRestorationForUserAction();
   }
 
   void clearAllConfigurations() {
@@ -715,6 +756,8 @@ class ApplicationManager {
       ..removeData('buttonStates');
 
     print('All configurations cleared');
+
+    enableVolumeRestorationForUserAction();
   }
 
   void dispose() {
