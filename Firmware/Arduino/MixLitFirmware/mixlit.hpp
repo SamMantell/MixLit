@@ -27,9 +27,10 @@ class mixlit {
     int colorIndexOffset;
 
     int sliderToChange;
-    bool needsUpdate;
 
     bool isConnected;
+
+    bool needsUpdating = false;
 
     String serialCommand;
     List<String> serialCommandBuffer;
@@ -146,7 +147,7 @@ class mixlit {
                         )
       };
 
-      needsUpdate = true;
+      needsUpdating = true;
     }
 
     void initialize()
@@ -177,6 +178,30 @@ class mixlit {
               Serial.println("mixlit");
               FastLED.setBrightness(16);
               delay(200);
+
+              needsUpdating = true;
+
+              for (int i = 0; i < NUM_OF_SLIDERS; i++)
+              {
+                currentSliderState[i] = 1023 - analogRead(sliders[i]);
+                previousSliderState[i] = currentSliderState[i];
+                stringToSendToSoftware += i;
+                stringToSendToSoftware += "|";
+                stringToSendToSoftware += previousSliderState[i];
+                stringToSendToSoftware += "|";
+              }
+              for (int i = 0; i < NUM_OF_POTENTIOMETERS; i++)
+              {
+                currentPotentiometerState[i] =  analogRead(potentiometers[i]);
+                previousPotentiometerState[i] = currentPotentiometerState[i];
+                stringToSendToSoftware += (i + NUM_OF_SLIDERS);
+                stringToSendToSoftware += "|";
+                stringToSendToSoftware += previousPotentiometerState[i];
+                stringToSendToSoftware += "|";
+              }
+
+              Serial.println(stringToSendToSoftware);
+
               return;
           }
         }
@@ -224,7 +249,7 @@ class mixlit {
 
       for (int i = 0; i < NUM_OF_SLIDERS; i++)
       {
-        if ((abs(currentSliderState[i] - previousSliderState[i]) > 5) || needsUpdate)
+        if ((abs(currentSliderState[i] - previousSliderState[i]) > 5) || needsUpdating)
         {
           if (currentSliderState[i] > 1020)
           {
@@ -238,7 +263,7 @@ class mixlit {
           setLEDs(currentSliderState[i], i);
         }
 
-        if ((abs(currentSliderState[i] - previousSliderState[i]) > 5 || needsUpdate))
+        if ((abs(currentSliderState[i] - previousSliderState[i]) > 5) || needsUpdating)
         {
           previousSliderState[i] = currentSliderState[i];
           stringToSendToSoftware += i;
@@ -250,7 +275,7 @@ class mixlit {
 
       for (int i = 0; i < NUM_OF_POTENTIOMETERS; i++)
       {
-        if ((abs(currentPotentiometerState[i] - previousPotentiometerState[i]) > 5))
+        if ((abs(currentPotentiometerState[i] - previousPotentiometerState[i]) > 5) || needsUpdating)
         {
           if (currentPotentiometerState[i] > 1020)
           {
@@ -261,13 +286,14 @@ class mixlit {
             currentPotentiometerState[i] = 0;
           }
         }
-        if ((abs(currentPotentiometerState[i] - previousPotentiometerState[i]) > 5))
+        if ((abs(currentPotentiometerState[i] - previousPotentiometerState[i]) > 5) || needsUpdating)
         {
           previousPotentiometerState[i] = currentPotentiometerState[i];
           stringToSendToSoftware += (i + NUM_OF_SLIDERS);
           stringToSendToSoftware += "|";
           stringToSendToSoftware += previousPotentiometerState[i];
           stringToSendToSoftware += "|";
+          needsUpdating = false;
         }
       }
 
@@ -283,5 +309,6 @@ class mixlit {
           stringToSendToSoftware += "|";
         }
       }
+
     }
 };
