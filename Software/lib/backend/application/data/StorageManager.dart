@@ -1,28 +1,45 @@
 import 'dart:io';
 import 'package:yaml/yaml.dart' as yaml;
 import 'package:yaml_writer/yaml_writer.dart';
+import 'package:path/path.dart' as path;
 
 class StorageManager {
   static final StorageManager _instance = StorageManager._internal();
-
   static StorageManager get instance => _instance;
-
   StorageManager._internal();
 
   Future<String> get _localPath async {
-    return Directory.current.path;
+    String appDataPath;
+
+    if (Platform.isWindows) {
+      appDataPath = Platform.environment['APPDATA'] ??
+          path.join(Platform.environment['USERPROFILE']!, 'AppData', 'Roaming');
+    } else if (Platform.isMacOS) {
+      appDataPath = path.join(
+          Platform.environment['HOME']!, 'Library', 'Application Support');
+    } else {
+      appDataPath = path.join(Platform.environment['HOME']!, '.config');
+    }
+
+    final mixlitPath = path.join(appDataPath, 'mixlit');
+
+    final directory = Directory(mixlitPath);
+    if (!await directory.exists()) {
+      await directory.create(recursive: true);
+    }
+
+    return mixlitPath;
   }
 
   Future<String> get _localFile async {
-    final path = await _localPath;
-    return '$path/data.yml';
+    final configPath = await _localPath;
+    return path.join(configPath, 'data.yml');
   }
 
   Future<void> saveData(String key, dynamic data) async {
     try {
       final file = File(await _localFile);
       print('Saving data to ${file.path}');
-
       Map<String, dynamic> existingData = {};
       if (await file.exists()) {
         final contents = await file.readAsString();
@@ -33,7 +50,6 @@ class StorageManager {
       }
 
       existingData[key] = data;
-
       final yamlWriter = YamlWriter();
       final yamlString = yamlWriter.write(existingData);
       await file.writeAsString(yamlString);
@@ -46,7 +62,6 @@ class StorageManager {
   Future<dynamic> getData(String key, {dynamic defaultValue}) async {
     try {
       final file = File(await _localFile);
-
       if (!await file.exists()) {
         print('File does not exist, returning default value');
         return defaultValue;
@@ -83,7 +98,6 @@ class StorageManager {
       }
 
       existingData.remove(key);
-
       final yamlWriter = YamlWriter();
       await file.writeAsString(yamlWriter.write(existingData));
     } catch (e) {
@@ -120,10 +134,15 @@ class StorageManager {
       }
 
       print('==== CONFIG CONTENTS ====');
+      print('Location: ${file.path}');
       print(contents);
       print('==== END OF CONFIG CONTENTS ====');
     } catch (e) {
       print('Error dumping storage contents: $e');
     }
+  }
+
+  Future<String> getConfigPath() async {
+    return await _localPath;
   }
 }

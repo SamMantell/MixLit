@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:mixlit/backend/serial/SerialWorker.dart';
-import 'package:mixlit/frontend/controllers/mute_button_controller.dart';
+import 'package:mixlit/backend/application/serial/SerialWorker.dart';
+import 'package:mixlit/backend/application/audio/MuteState.dart';
 
 class DeviceEventHandler {
   final SerialWorker worker;

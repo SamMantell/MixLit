@@ -27,9 +27,10 @@ class mixlit {
     int colorIndexOffset;
 
     int sliderToChange;
-    bool needsUpdate;
 
     bool isConnected;
+
+    bool needsUpdating = false;
 
     String serialCommand;
     List<String> serialCommandBuffer;
@@ -45,23 +46,23 @@ class mixlit {
     CRGBPalette16 All_ColorPallete[NUM_OF_LED_STRIPS] = 
     {
       CRGBPalette16   (
-                        0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF,
+                        0xfffdf0, 0xfffbde, 0xfff8cd,  0xfff5bb, 0xfff3a9, 0xfff096, 0xffed84,  0xffea70,
                         0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF
                       ),
       CRGBPalette16   (
-                        0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF, 0xFFFFFF, 0xFF0000, 0xFF0000,  0xFF0000,
+                        0xea81b2, 0xeb7eb1, 0xed7ab0,  0xee77af, 0xef73ae, 0xf170ad, 0xf26cac,  0xf368ab,
                         0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF
                       ),
       CRGBPalette16   (
-                        0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF, 0xFFFFFF, 0x00FF00, 0x00FF00,  0x00FF00,
+                        0x917cbb, 0x8a76b9, 0x8371b7,  0x7b6cb5, 0x7367b3, 0x6b62b1, 0x625daf,  0x5958ad,
                         0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF
                       ),
       CRGBPalette16   (
-                        0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF, 0xFFFFFF, 0x0000FF, 0x0000FF,  0x0000FF,
+                        0x797edc, 0x6f79d8, 0x6574d4,  0x5a6fcf, 0x4e6acb, 0x4165c7, 0x3260c2,  0x1e5bbe,
                         0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF
                       ),
       CRGBPalette16   (
-                        0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF, 0xFFFFFF, 0xFF00FF, 0xFF00FF,  0xFF00FF,
+                        0xa96ae0, 0xa96ae0, 0xa96ae0,  0xa96ae0, 0xa96ae0, 0xa96ae0, 0xa96ae0,  0xa96ae0,
                         0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF, 0xFFFFFF, 0xFFFFFF, 0xFFFFFF,  0xFFFFFF
                       )
     };
@@ -146,7 +147,7 @@ class mixlit {
                         )
       };
 
-      needsUpdate = true;
+      needsUpdating = true;
     }
 
     void initialize()
@@ -175,8 +176,32 @@ class mixlit {
           if (c == 63)
           {
               Serial.println("mixlit");
-              FastLED.setBrightness(10);
+              FastLED.setBrightness(16);
               delay(200);
+
+              needsUpdating = true;
+
+              for (int i = 0; i < NUM_OF_SLIDERS; i++)
+              {
+                currentSliderState[i] = 1023 - analogRead(sliders[i]);
+                previousSliderState[i] = currentSliderState[i];
+                stringToSendToSoftware += i;
+                stringToSendToSoftware += "|";
+                stringToSendToSoftware += previousSliderState[i];
+                stringToSendToSoftware += "|";
+              }
+              for (int i = 0; i < NUM_OF_POTENTIOMETERS; i++)
+              {
+                currentPotentiometerState[i] =  analogRead(potentiometers[i]);
+                previousPotentiometerState[i] = currentPotentiometerState[i];
+                stringToSendToSoftware += (i + NUM_OF_SLIDERS);
+                stringToSendToSoftware += "|";
+                stringToSendToSoftware += previousPotentiometerState[i];
+                stringToSendToSoftware += "|";
+              }
+
+              Serial.println(stringToSendToSoftware);
+
               return;
           }
         }
@@ -224,7 +249,7 @@ class mixlit {
 
       for (int i = 0; i < NUM_OF_SLIDERS; i++)
       {
-        if ((abs(currentSliderState[i] - previousSliderState[i]) > 5) || needsUpdate)
+        if ((abs(currentSliderState[i] - previousSliderState[i]) > 5) || needsUpdating)
         {
           if (currentSliderState[i] > 1020)
           {
@@ -238,13 +263,37 @@ class mixlit {
           setLEDs(currentSliderState[i], i);
         }
 
-        if ((abs(currentSliderState[i] - previousSliderState[i]) > 5))
+        if ((abs(currentSliderState[i] - previousSliderState[i]) > 5) || needsUpdating)
         {
           previousSliderState[i] = currentSliderState[i];
           stringToSendToSoftware += i;
           stringToSendToSoftware += "|";
           stringToSendToSoftware += previousSliderState[i];
           stringToSendToSoftware += "|";
+        }
+      }
+
+      for (int i = 0; i < NUM_OF_POTENTIOMETERS; i++)
+      {
+        if ((abs(currentPotentiometerState[i] - previousPotentiometerState[i]) > 5) || needsUpdating)
+        {
+          if (currentPotentiometerState[i] > 1020)
+          {
+            currentPotentiometerState[i] = 1023;
+          }
+          else if (currentPotentiometerState[i] < 3)
+          {
+            currentPotentiometerState[i] = 0;
+          }
+        }
+        if ((abs(currentPotentiometerState[i] - previousPotentiometerState[i]) > 5) || needsUpdating)
+        {
+          previousPotentiometerState[i] = currentPotentiometerState[i];
+          stringToSendToSoftware += (i + NUM_OF_SLIDERS);
+          stringToSendToSoftware += "|";
+          stringToSendToSoftware += previousPotentiometerState[i];
+          stringToSendToSoftware += "|";
+          needsUpdating = false;
         }
       }
 
@@ -260,5 +309,6 @@ class mixlit {
           stringToSendToSoftware += "|";
         }
       }
+
     }
 };

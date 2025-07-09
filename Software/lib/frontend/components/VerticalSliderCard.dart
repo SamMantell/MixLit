@@ -9,6 +9,7 @@ class VerticalSliderCard extends StatelessWidget {
   final bool isActive;
   final int percentage;
   final Color accentColor;
+  final double accentOpacity;
   final ValueChanged<double> onSliderChanged;
   final VoidCallback onMutePressed;
   final VoidCallback onTap;
@@ -23,6 +24,7 @@ class VerticalSliderCard extends StatelessWidget {
     required this.isActive,
     required this.percentage,
     required this.accentColor,
+    this.accentOpacity = 1.0,
     required this.onSliderChanged,
     required this.onMutePressed,
     required this.onTap,
@@ -31,12 +33,18 @@ class VerticalSliderCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Card styling
     final baseColor = isDarkMode ? const Color(0xFF282828) : Colors.white;
     final textColor = isDarkMode ? Colors.white : Colors.black87;
     final mutedTextColor = isDarkMode ? Colors.red[300]! : Colors.red;
 
-    // Card width should be fixed for desktop layout
+    final effectiveAccentColor = accentColor.withOpacity(accentOpacity);
+    final effectiveAccentColorLight =
+        accentColor.withOpacity(accentOpacity * 0.1);
+    final effectiveAccentColorMedium =
+        accentColor.withOpacity(accentOpacity * 0.3);
+    final effectiveAccentColorStrong =
+        accentColor.withOpacity(accentOpacity * 0.8);
+
     const double cardWidth = 120;
 
     return Container(
@@ -54,43 +62,41 @@ class VerticalSliderCard extends StatelessWidget {
           ),
         ],
         border: Border.all(
-          color: accentColor.withOpacity(isActive ? 0.5 : 0.2),
+          color: isActive
+              ? effectiveAccentColor.withOpacity(0.5 * accentOpacity)
+              : accentColor.withOpacity(0.2),
           width: 2,
         ),
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // Top section with icon and title
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: Column(
               children: [
-                // App icon (clickable if assigned)
                 CustomTooltip(
                   message: isActive ? 'Change' : 'Assign Application',
                   child: GestureDetector(
-                    onTap:
-                        onTap, // Always allow icon to be clicked for reassignment
+                    onTap: onTap,
                     child: Container(
                       width: 48,
                       height: 48,
                       decoration: BoxDecoration(
-                        color: accentColor.withOpacity(0.1),
+                        color: effectiveAccentColorLight,
                         shape: BoxShape.circle,
                         border: Border.all(
-                          color: accentColor.withOpacity(0.3),
+                          color: effectiveAccentColorMedium,
                           width: 1,
                         ),
                       ),
                       child: Stack(
                         alignment: Alignment.center,
                         children: [
-                          // The app icon
                           iconWidget ??
                               const Icon(Icons.apps, color: Colors.white),
 
-                          // Add a small edit icon for assigned cards
+                          //edit icon
                           if (isActive)
                             Positioned(
                               right: 0,
@@ -99,7 +105,7 @@ class VerticalSliderCard extends StatelessWidget {
                                 width: 16,
                                 height: 16,
                                 decoration: BoxDecoration(
-                                  color: accentColor,
+                                  color: effectiveAccentColor,
                                   shape: BoxShape.circle,
                                   border: Border.all(
                                     color: baseColor,
@@ -119,10 +125,8 @@ class VerticalSliderCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 8),
-                // App name (also clickable)
                 GestureDetector(
-                  onTap:
-                      isActive ? onTap : null, // Allow reassignment if active
+                  onTap: isActive ? onTap : null,
                   child: Text(
                     title,
                     style: TextStyle(
@@ -131,10 +135,7 @@ class VerticalSliderCard extends StatelessWidget {
                       fontSize: 14,
                       fontWeight: FontWeight.w200,
                       height: 1,
-                      decoration:
-                          isActive ? TextDecoration.none : TextDecoration.none,
-                      decorationColor: textColor,
-                      decorationThickness: 1,
+                      decoration: TextDecoration.none,
                     ),
                     textAlign: TextAlign.center,
                     maxLines: 2,
@@ -142,7 +143,8 @@ class VerticalSliderCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 4),
-                // Volume percentage
+
+                //volume value
                 Text(
                   isMuted ? 'MUTED' : '$percentage',
                   style: TextStyle(
@@ -156,7 +158,7 @@ class VerticalSliderCard extends StatelessWidget {
             ),
           ),
 
-          // Middle section with vertical slider
+          //slider
           if (isActive)
             Expanded(
               child: Container(
@@ -169,17 +171,20 @@ class VerticalSliderCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(30),
                 ),
                 child: RotatedBox(
-                  quarterTurns: 3, // Rotate to make it a vertical slider
+                  quarterTurns: 3,
                   child: SliderTheme(
                     data: SliderThemeData(
                       trackHeight: 60,
-                      thumbColor: isMuted ? Colors.grey : accentColor,
+                      thumbColor: isMuted ? Colors.grey : effectiveAccentColor,
                       activeTrackColor: isMuted
                           ? Colors.grey.withOpacity(0.3)
-                          : accentColor.withOpacity(0.8),
+                          : effectiveAccentColorStrong,
                       inactiveTrackColor: Colors.transparent,
-                      overlayColor: accentColor.withOpacity(0.1),
-                      thumbShape: SliderThumbShape(isMuted: isMuted),
+                      overlayColor: effectiveAccentColorLight,
+                      thumbShape: SliderThumbShape(
+                        isMuted: isMuted,
+                        accentColor: effectiveAccentColor,
+                      ),
                       trackShape: CustomTrackShape(),
                     ),
                     child: Slider(
@@ -198,8 +203,7 @@ class VerticalSliderCard extends StatelessWidget {
           else
             Expanded(
               child: GestureDetector(
-                onTap:
-                    onTap, // Make entire container clickable for unassigned sliders
+                onTap: onTap,
                 child: Container(
                   width: 60,
                   margin:
@@ -216,7 +220,7 @@ class VerticalSliderCard extends StatelessWidget {
                       children: [
                         Icon(
                           Icons.add,
-                          color: accentColor.withOpacity(0.5),
+                          color: effectiveAccentColor.withOpacity(0.5),
                           size: 32,
                         ),
                         const SizedBox(height: 8),
@@ -224,7 +228,7 @@ class VerticalSliderCard extends StatelessWidget {
                           "Assign",
                           style: TextStyle(
                             fontFamily: 'BitstreamVeraSans',
-                            color: accentColor.withOpacity(0.7),
+                            color: effectiveAccentColor.withOpacity(0.7),
                             fontSize: 12,
                             fontWeight: FontWeight.w500,
                           ),
@@ -237,7 +241,7 @@ class VerticalSliderCard extends StatelessWidget {
               ),
             ),
 
-          // Bottom section with mute button
+          //bottom part
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: CustomTooltip(
@@ -245,7 +249,7 @@ class VerticalSliderCard extends StatelessWidget {
                   isActive ? (isMuted ? 'Unmute' : 'Mute') : 'Assign app first',
               child: MuteButton(
                 isMuted: isMuted,
-                accentColor: accentColor,
+                accentColor: effectiveAccentColor,
                 onPressed: onMutePressed,
                 isActive: isActive,
               ),
@@ -257,7 +261,6 @@ class VerticalSliderCard extends StatelessWidget {
   }
 }
 
-// Custom track shape for the slider
 class CustomTrackShape extends RoundedRectSliderTrackShape {
   @override
   Rect getPreferredRect({
@@ -276,11 +279,14 @@ class CustomTrackShape extends RoundedRectSliderTrackShape {
   }
 }
 
-// Custom thumb shape for the slider
 class SliderThumbShape extends SliderComponentShape {
   final bool isMuted;
+  final Color accentColor;
 
-  SliderThumbShape({required this.isMuted});
+  SliderThumbShape({
+    required this.isMuted,
+    required this.accentColor,
+  });
 
   @override
   Size getPreferredSize(bool isEnabled, bool isDiscrete) {
@@ -303,25 +309,15 @@ class SliderThumbShape extends SliderComponentShape {
     required Size sizeWithOverflow,
   }) {
     final Canvas canvas = context.canvas;
+    final thumbColor = isMuted ? Colors.grey : accentColor;
 
-    // Draw outer circle with border
-    final Paint borderPaint = Paint()
-      ..color = sliderTheme.thumbColor ?? Colors.white
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2;
-
-    canvas.drawCircle(center, 12, borderPaint);
-
-    // Draw filled circle
     final Paint fillPaint = Paint()
-      ..color = sliderTheme.thumbColor ?? Colors.white
+      ..color = thumbColor
       ..style = PaintingStyle.fill;
 
     canvas.drawCircle(center, 10, fillPaint);
 
-    // Draw icon inside
     if (isMuted) {
-      // Draw an X for muted
       final Paint linePaint = Paint()
         ..color = Colors.white
         ..style = PaintingStyle.stroke
@@ -339,7 +335,6 @@ class SliderThumbShape extends SliderComponentShape {
         linePaint,
       );
     } else {
-      // Draw a = for unmuted
       final Paint linePaint = Paint()
         ..color = Colors.white
         ..style = PaintingStyle.stroke

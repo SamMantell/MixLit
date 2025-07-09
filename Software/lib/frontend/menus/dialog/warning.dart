@@ -78,7 +78,7 @@ class FailedToConnectToDeviceDialog extends StatelessWidget {
   static void show(BuildContext context, String message) {
     showDialog(
       context: context,
-      barrierDismissible: false, // Prevent clicking outside to dismiss
+      barrierDismissible: false,
       builder: (BuildContext context) {
         return FailedToConnectToDeviceDialog(message: message);
       },
