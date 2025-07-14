@@ -117,39 +117,67 @@ class VolumeController {
     if (tag == ConfigManager.TAG_DEFAULT_DEVICE ||
         tag == ConfigManager.TAG_MASTER_VOLUME) {
       int volumeLevel = ((value / 1024) * 100).round();
-
       Audio.setVolume(volumeLevel / 100, AudioDeviceType.output);
+    } else if (tag == ConfigManager.TAG_GROUP) {
+      // Handle group volume adjustment
+      await _adjustGroupVolume(sliderId, value);
     } else if (tag == ConfigManager.TAG_APP && assignedApps[sliderId] != null) {
       final app = assignedApps[sliderId];
       if (app != null) {
-        double volumeLevel = value / 1024;
-        if (volumeLevel <= 0.009) {
-          volumeLevel = 0.0001;
-        }
-
-        try {
-          bool hasMultipleInstances =
-              await _appInstanceManager.hasMultipleInstances(app);
-          if (hasMultipleInstances) {
-            await _appInstanceManager.setVolumeForAllInstances(
-                app, volumeLevel);
-          } else {
-            Audio.setAudioMixerVolume(app.processId, volumeLevel);
-          }
-        } catch (e) {
-          print('Error adjusting app volume: $e');
-          try {
-            Audio.setAudioMixerVolume(app.processId, volumeLevel);
-          } catch (fallbackError) {
-            print('Fallback volume adjustment failed: $fallbackError');
-          }
-        }
+        await _adjustSingleAppVolume(app, value);
       }
-    } else if (tag == ConfigManager.TAG_ACTIVE_APP) {}
+    } else if (tag == ConfigManager.TAG_ACTIVE_APP) {
+      // Handle active app volume
+    }
 
     bool isMuted =
         fromRestore ? _muteStates[sliderId] ?? false : (value <= muteVolume);
     applicationManager.updateSliderConfig(sliderId, value, isMuted);
+  }
+
+  Future<void> _adjustGroupVolume(int sliderId, double value) async {
+    final group = applicationManager.assignedGroups[sliderId];
+    if (group == null) return;
+
+    try {
+      double volumeLevel = value / 1024;
+      if (volumeLevel <= 0.009) {
+        volumeLevel = 0.0001;
+      }
+
+      final runningApps = await applicationManager.getRunningApplicationsWithAudio();
+      final configManager = ConfigManager.instance;
+      
+      await configManager.adjustVolumeForGroup(group, volumeLevel, runningApps);
+      
+      print('Adjusted volume for group "${group.name}" to level $volumeLevel');
+    } catch (e) {
+      print('Error adjusting group volume: $e');
+    }
+  }
+
+  Future<void> _adjustSingleAppVolume(ProcessVolume app, double value) async {
+    double volumeLevel = value / 1024;
+    if (volumeLevel <= 0.009) {
+      volumeLevel = 0.0001;
+    }
+
+    try {
+      bool hasMultipleInstances =
+          await _appInstanceManager.hasMultipleInstances(app);
+      if (hasMultipleInstances) {
+        await _appInstanceManager.setVolumeForAllInstances(app, volumeLevel);
+      } else {
+        Audio.setAudioMixerVolume(app.processId, volumeLevel);
+      }
+    } catch (e) {
+      print('Error adjusting app volume: $e');
+      try {
+        Audio.setAudioMixerVolume(app.processId, volumeLevel);
+      } catch (fallbackError) {
+        print('Fallback volume adjustment failed: $fallbackError');
+      }
+    }
   }
 
   Future<void> setMuteState(int sliderId, bool isMuted) async {

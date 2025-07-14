@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:mixlit/backend/application/data/ConfigManager.dart';
 import 'package:mixlit/backend/application/data/StorageManager.dart';
+import 'package:mixlit/frontend/menus/AssignApplicationMenu.dart';
 import 'package:win32audio/win32audio.dart';
 
 class MissingApp {
@@ -26,6 +27,7 @@ class MissingApp {
 class ApplicationManager {
   Map<int, ProcessVolume> assignedApplications = {};
   Map<int, MissingApp> missingApplications = {};
+  Map<int, AppGroup> assignedGroups = {};
   List<double> sliderValues = List.filled(8, 0.5);
   List<String> sliderTags = List.filled(8, 'defaultDevice');
   List<bool> muteStates = List.filled(8, false);
@@ -133,6 +135,59 @@ class ApplicationManager {
     for (var sliderIndex in potentiallyMissingApps) {
       await _moveAppToMissing(sliderIndex);
     }
+  }
+
+  void assignGroupToSlider(int sliderIndex, AppGroup group) async {
+    assignedGroups[sliderIndex] = group;
+    sliderTags[sliderIndex] = ConfigManager.TAG_GROUP;
+    
+    // Remove any individual app or missing app assignments
+    assignedApplications.remove(sliderIndex);
+    missingApplications.remove(sliderIndex);
+    _recentlyRestoredApps.remove(sliderIndex);
+    _failedValidationCounts.remove(sliderIndex);
+
+    print('Assigned group "${group.name}" to slider $sliderIndex');
+
+    // Save the group if it's new
+    await _configManager.saveAppGroup(group);
+
+    _configManager.updateSliderConfigForGroup(
+        sliderIndex, group, muteStates[sliderIndex], 
+        volumeValue: sliderValues[sliderIndex]);
+
+    enableVolumeRestorationForUserAction();
+  }
+
+  Future<void> adjustGroupVolume(int sliderIndex, double sliderValue, {bool fromRestore = false}) async {
+    final group = assignedGroups[sliderIndex];
+    if (group == null) return;
+    
+    sliderValues[sliderIndex] = sliderValue;
+
+    if (_allowVolumeRestoration || _deviceJustConnected) {
+      try {
+        final runningApps = await getRunningApplicationsWithAudio();
+        double volumeLevel = sliderValue / 1024;
+        if (volumeLevel <= 0.009) {
+          volumeLevel = 0.0001;
+        }
+        
+        await _configManager.adjustVolumeForGroup(group, volumeLevel, runningApps);
+      } catch (e) {
+        print('Error adjusting group volume: $e');
+      }
+    }
+
+    // Auto-detect mute state if NOT restoring
+    bool muteState = fromRestore ? muteStates[sliderIndex] : (sliderValue <= 0.009);
+    _configManager.updateSliderConfigForGroup(sliderIndex, group, muteState);
+
+    if (_deviceJustConnected) {
+      _deviceJustConnected = false;
+    }
+
+    enableVolumeRestorationForUserAction();
   }
 
   Future<bool> _testAudioSessionControl(ProcessVolume app) async {
@@ -394,10 +449,18 @@ class ApplicationManager {
         final sliderTag = config['sliderTag'] ?? 'unassigned';
         print('Processing slider $i with tag: $sliderTag');
 
-        if (sliderTag == ConfigManager.TAG_APP &&
-            config['processName'] != null) {
-          print(
-              'Attempting to find match for slider $i: ${config['processName']}');
+        if (sliderTag == ConfigManager.TAG_GROUP && config['group'] != null) {
+          // Handle group assignment
+          try {
+            final group = AppGroup.fromJson(config['group']);
+            assignedGroups[i] = group;
+            print('Restored group "${group.name}" for slider $i');
+          } catch (e) {
+            print('Error restoring group for slider $i: $e');
+            sliderTags[i] = ConfigManager.TAG_UNASSIGNED;
+          }
+        } else if (sliderTag == ConfigManager.TAG_APP && config['processName'] != null) {
+          print('Attempting to find match for slider $i: ${config['processName']}');
 
           final matchingApp = await _configManager.findMatchingApp(
               runningApps, config['processName']);
@@ -405,18 +468,13 @@ class ApplicationManager {
           if (matchingApp != null) {
             assignedApplications[i] = matchingApp;
             _recentlyRestoredApps[i] = DateTime.now();
-            print(
-                'Found and assigned app ${matchingApp.processPath} to slider $i (NO volume restoration during startup)');
-
-            //DONT restore volume during startup - just assign app
+            print('Found and assigned app ${matchingApp.processPath} to slider $i');
           } else {
             await _createMissingAppEntry(i, config);
           }
         } else if (sliderTag == ConfigManager.TAG_DEFAULT_DEVICE ||
             sliderTag == ConfigManager.TAG_MASTER_VOLUME) {
-          print(
-              'Device/master volume slider $i found - NO restoration during startup');
-          // DON'T restore device volume during startup
+          print('Device/master volume slider $i found');
         } else if (sliderTag == ConfigManager.TAG_ACTIVE_APP) {
           print('Restored active app control for slider $i');
         } else {
@@ -427,19 +485,19 @@ class ApplicationManager {
       _isConfigLoaded = true;
       _configLoadCompleter.complete();
 
-      // marks initial startup as complete after short delay
       Timer(const Duration(seconds: 1), () {
         _isInitialStartup = false;
-        print(
-            'Initial startup completed - volume restoration will be enabled for user actions');
+        print('Initial startup completed - volume restoration will be enabled for user actions');
       });
 
-      print(
-          'Configuration loading completed successfully (volumes NOT restored)');
+      print('Configuration loading completed successfully');
 
       if (missingApplications.isNotEmpty) {
-        print(
-            'Missing applications: ${missingApplications.keys.map((k) => '$k: ${missingApplications[k]!.displayName}').join(', ')}');
+        print('Missing applications: ${missingApplications.keys.map((k) => '$k: ${missingApplications[k]!.displayName}').join(', ')}');
+      }
+      
+      if (assignedGroups.isNotEmpty) {
+        print('Assigned groups: ${assignedGroups.keys.map((k) => '$k: ${assignedGroups[k]!.name}').join(', ')}');
       }
     } catch (e) {
       print('Error loading saved configuration: $e');
@@ -487,7 +545,22 @@ class ApplicationManager {
     }
   }
 
-  Map<String, dynamic> getSliderDisplayInfo(int sliderIndex) {
+   Map<String, dynamic> getSliderDisplayInfo(int sliderIndex) {
+    // Check for assigned group first
+    if (assignedGroups.containsKey(sliderIndex)) {
+      final group = assignedGroups[sliderIndex]!;
+      return {
+        'type': 'group',
+        'displayName': group.name,
+        'groupId': group.id,
+        'processNames': group.processNames,
+        'color': group.color,
+        'isActive': true,
+        'appCount': group.processNames.length,
+      };
+    }
+    
+    // Existing logic for individual apps
     if (assignedApplications.containsKey(sliderIndex)) {
       final app = assignedApplications[sliderIndex]!;
       final processName = _configManager.extractProcessName(app.processPath);
@@ -593,10 +666,16 @@ class ApplicationManager {
     enableVolumeRestorationForUserAction();
   }
 
-  void adjustVolume(int sliderIndex, double sliderValue,
-      {bool fromRestore = false}) {
+  void adjustVolume(int sliderIndex, double sliderValue, {bool fromRestore = false}) {
     sliderValues[sliderIndex] = sliderValue;
 
+    // Check if this is a group slider
+    if (assignedGroups.containsKey(sliderIndex)) {
+      adjustGroupVolume(sliderIndex, sliderValue, fromRestore: fromRestore);
+      return;
+    }
+
+    // Existing logic for individual apps and system controls
     if (_allowVolumeRestoration || _deviceJustConnected) {
       _pendingAppVolumes[sliderIndex] = sliderValue;
       _scheduleVolumeUpdate();
@@ -604,14 +683,11 @@ class ApplicationManager {
 
     final app = assignedApplications[sliderIndex];
     if (app != null) {
-      //auto-detect mute state if NOT restoring
-      bool muteState =
-          fromRestore ? muteStates[sliderIndex] : (sliderValue <= 0.009);
+      bool muteState = fromRestore ? muteStates[sliderIndex] : (sliderValue <= 0.009);
       _configManager.updateSliderConfig(
           sliderIndex, app.processPath, sliderTags[sliderIndex], muteState);
     } else {
-      bool muteState =
-          fromRestore ? muteStates[sliderIndex] : (sliderValue <= 0.009);
+      bool muteState = fromRestore ? muteStates[sliderIndex] : (sliderValue <= 0.009);
       _configManager.updateSliderConfig(
           sliderIndex, null, sliderTags[sliderIndex], muteState);
     }
@@ -724,6 +800,7 @@ class ApplicationManager {
   void resetSliderConfiguration(int sliderIndex) {
     assignedApplications.remove(sliderIndex);
     missingApplications.remove(sliderIndex);
+    assignedGroups.remove(sliderIndex); // Remove group assignment
     _recentlyRestoredApps.remove(sliderIndex);
     _failedValidationCounts.remove(sliderIndex);
 
@@ -741,6 +818,7 @@ class ApplicationManager {
   void clearAllConfigurations() {
     assignedApplications.clear();
     missingApplications.clear();
+    assignedGroups.clear(); // Clear group assignments
     _recentlyRestoredApps.clear();
     _failedValidationCounts.clear();
     sliderValues = List.filled(8, 0.5);
@@ -753,7 +831,8 @@ class ApplicationManager {
       ..removeData('assignedApps')
       ..removeData('deviceVolume')
       ..removeData('sliderConfigs')
-      ..removeData('buttonStates');
+      ..removeData('buttonStates')
+      ..removeData('appGroups'); // Remove saved groups
 
     print('All configurations cleared');
 

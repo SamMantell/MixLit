@@ -14,6 +14,11 @@ class VerticalSliderCard extends StatelessWidget {
   final VoidCallback onMutePressed;
   final VoidCallback onTap;
   final bool isDarkMode;
+  
+  // New properties for group support
+  final bool isGroup;
+  final int? appCount;
+  final String? sliderType; // 'app', 'group', 'device', 'master', etc.
 
   const VerticalSliderCard({
     super.key,
@@ -29,6 +34,9 @@ class VerticalSliderCard extends StatelessWidget {
     required this.onMutePressed,
     required this.onTap,
     required this.isDarkMode,
+    this.isGroup = false,
+    this.appCount,
+    this.sliderType,
   });
 
   @override
@@ -93,10 +101,10 @@ class VerticalSliderCard extends StatelessWidget {
                       child: Stack(
                         alignment: Alignment.center,
                         children: [
-                          iconWidget ??
-                              const Icon(Icons.apps, color: Colors.white),
+                          // Use different icons based on slider type
+                          _buildMainIcon(),
 
-                          //edit icon
+                          // Edit icon for active sliders
                           if (isActive)
                             Positioned(
                               right: 0,
@@ -144,15 +152,28 @@ class VerticalSliderCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
 
-                //volume value
-                Text(
-                  isMuted ? 'MUTED' : '$percentage',
-                  style: TextStyle(
-                    fontFamily: 'BitstreamVeraSans',
-                    color: isMuted ? mutedTextColor : textColor,
-                    fontSize: 12,
-                    fontWeight: isMuted ? FontWeight.bold : FontWeight.normal,
-                  ),
+                // Volume value with app count for groups
+                Column(
+                  children: [
+                    Text(
+                      isMuted ? 'MUTED' : '$percentage',
+                      style: TextStyle(
+                        fontFamily: 'BitstreamVeraSans',
+                        color: isMuted ? mutedTextColor : textColor,
+                        fontSize: 12,
+                        fontWeight: isMuted ? FontWeight.bold : FontWeight.normal,
+                      ),
+                    ),
+                    if (isGroup && appCount != null)
+                      Text(
+                        '$appCount apps',
+                        style: TextStyle(
+                          fontFamily: 'BitstreamVeraSans',
+                          color: textColor.withOpacity(0.6),
+                          fontSize: 10,
+                        ),
+                      ),
+                  ],
                 ),
               ],
             ),
@@ -184,6 +205,7 @@ class VerticalSliderCard extends StatelessWidget {
                       thumbShape: SliderThumbShape(
                         isMuted: isMuted,
                         accentColor: effectiveAccentColor,
+                        isGroup: isGroup,
                       ),
                       trackShape: CustomTrackShape(),
                     ),
@@ -259,6 +281,42 @@ class VerticalSliderCard extends StatelessWidget {
       ),
     );
   }
+  
+  Widget _buildMainIcon() {
+    if (iconWidget != null) {
+      return iconWidget!;
+    }
+    
+    // Return appropriate icon based on slider type
+    switch (sliderType) {
+      case 'group':
+        return Icon(
+          Icons.folder,
+          color: Colors.white,
+          size: 24,
+        );
+      case 'device':
+        return Icon(
+          Icons.speaker,
+          color: Colors.white,
+          size: 24,
+        );
+      case 'master':
+        return Icon(
+          Icons.volume_up,
+          color: Colors.white,
+          size: 24,
+        );
+      case 'active_app_control':
+        return Icon(
+          Icons.app_registration,
+          color: Colors.white,
+          size: 24,
+        );
+      default:
+        return const Icon(Icons.apps, color: Colors.white, size: 24);
+    }
+  }
 }
 
 class CustomTrackShape extends RoundedRectSliderTrackShape {
@@ -282,10 +340,12 @@ class CustomTrackShape extends RoundedRectSliderTrackShape {
 class SliderThumbShape extends SliderComponentShape {
   final bool isMuted;
   final Color accentColor;
+  final bool isGroup;
 
   SliderThumbShape({
     required this.isMuted,
     required this.accentColor,
+    this.isGroup = false,
   });
 
   @override
@@ -334,6 +394,23 @@ class SliderThumbShape extends SliderComponentShape {
         Offset(center.dx - 5, center.dy + 5),
         linePaint,
       );
+    } else if (isGroup) {
+      // Draw a small folder icon for groups
+      final Paint iconPaint = Paint()
+        ..color = Colors.white
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1;
+
+      // Simple folder representation
+      final Path folderPath = Path();
+      folderPath.moveTo(center.dx - 4, center.dy - 2);
+      folderPath.lineTo(center.dx - 2, center.dy - 4);
+      folderPath.lineTo(center.dx + 4, center.dy - 4);
+      folderPath.lineTo(center.dx + 4, center.dy + 3);
+      folderPath.lineTo(center.dx - 4, center.dy + 3);
+      folderPath.close();
+
+      canvas.drawPath(folderPath, iconPaint);
     } else {
       final Paint linePaint = Paint()
         ..color = Colors.white
