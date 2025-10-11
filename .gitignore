@@ -4,3 +4,9 @@
 
 /Software/Form1.Designer.cs
 /Software-Installer/Output/MixLit-Installer.exe
+Software-Installer/MixLitLauncher/bin/*
+Software-Installer/MixLitLauncher/.vs/*
+Software-Installer/MixLitLauncher/obj/*
+software-service/MixLitAudioService/bin/*
+software-service/MixLitAudioService/.vs/*
+software-service/MixLitAudioService/obj/*

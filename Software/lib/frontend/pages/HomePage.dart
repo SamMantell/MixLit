@@ -1,15 +1,16 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:mixlit/backend/application/audio/VolumeController.dart';
 import 'package:mixlit/frontend/components/util/rate_limit_updates.dart';
 import 'package:tray_manager/tray_manager.dart';
-import 'package:win32audio/win32audio.dart';
-//import 'package:mixlit/backend/application/LEDController.dart';
+//import 'package:mixlit/backend/LEDController.dart';
 import 'package:mixlit/backend/Updater.dart';
 import 'package:mixlit/backend/application/serial/SerialWorker.dart';
 import 'package:mixlit/backend/application/audio/ApplicationManager.dart';
+import 'package:mixlit/backend/application/audio/audio_service_client.dart';
 import 'package:mixlit/backend/application/data/ConfigManager.dart';
 import 'package:mixlit/frontend/menus/SettingsMenu.dart';
 import 'package:mixlit/backend/application/audio/MuteState.dart';
@@ -19,19 +20,21 @@ import 'package:mixlit/frontend/components/VerticalSliderCard.dart';
 import 'package:mixlit/frontend/components/HorizontalDialCard.dart';
 import 'package:mixlit/frontend/components/application_icon.dart';
 import 'package:mixlit/backend/application/util/IconColourExtractor.dart';
+import 'package:mixlit/backend/application/util/IconExtractor.dart';
 import 'package:mixlit/frontend/menus/AssignApplicationMenu.dart';
-import 'package:mixlit/frontend/Theme.dart'; // Import the theme
+import 'package:mixlit/frontend/Theme.dart';
 import 'package:window_manager/window_manager.dart';
 
 class HomePage extends StatefulWidget {
   final bool isAutoStarted;
   final Function(bool)? onThemeChanged;
 
-  const HomePage(
-      {super.key,
-      this.isAutoStarted = false,
-      this.onThemeChanged,
-      required Future<void> Function() onSettingsChanged});
+  const HomePage({
+    super.key,
+    this.isAutoStarted = false,
+    this.onThemeChanged,
+    required Future<void> Function() onSettingsChanged,
+  });
 
   @override
   _HomePageState createState() => _HomePageState();
@@ -40,7 +43,8 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage>
     with TickerProviderStateMixin, WindowListener, TrayListener {
   final SerialWorker _worker = SerialWorker();
-  final ApplicationManager _applicationManager = ApplicationManager();
+  final AudioServiceClient _audioServiceClient = AudioServiceClient();
+  late final ApplicationManager _applicationManager;
   late final MuteButtonController _muteButtonController;
   late final VolumeController _volumeController;
   late final ConnectionHandler _connectionHandler;
@@ -48,11 +52,12 @@ class _HomePageState extends State<HomePage>
   StreamSubscription? _initialHardwareValuesSubscription;
 
   final List<double> _sliderValues = List.filled(8, 0.1);
-  List<ProcessVolume?> _assignedApps = List.filled(8, null);
+  List<AudioSessionInfo?> _assignedApps = List.filled(8, null);
   final Map<String, Uint8List?> _appIcons = {};
   final Map<String, Uint8List?> _cachedAppIcons = {};
   List<String> _sliderTags = List.filled(8, 'unassigned');
   bool _configLoaded = false;
+  bool _audioServiceConnected = false;
 
   late final RateLimitedUpdater _uiUpdater;
   late final BatchedValueUpdater<double> _sliderUpdater;
@@ -61,9 +66,6 @@ class _HomePageState extends State<HomePage>
 
   final Map<int, AnimationController> _pulseControllers = {};
   final Map<int, Animation<double>> _pulseAnimations = {};
-
-  //late final LEDController _ledController;
-  //bool _useAnimatedLEDs = false;
 
   @override
   void initState() {
@@ -88,7 +90,18 @@ class _HomePageState extends State<HomePage>
       onSliderValueUpdated: _updateSliderValue,
     );
 
-    _initializeConfiguration().then((_) {
+    _initializeServices();
+  }
+
+  Future<void> _initializeServices() async {
+    try {
+      await _audioServiceClient.connect();
+      _audioServiceConnected = true;
+      print('Audio service connected successfully');
+      _applicationManager = ApplicationManager(_audioServiceClient);
+
+      await _initializeConfiguration();
+
       _volumeController = VolumeController(
         applicationManager: _applicationManager,
         sliderTags: _sliderTags,
@@ -101,20 +114,6 @@ class _HomePageState extends State<HomePage>
         _volumeController.updateMuteState(
             i, _muteButtonController.muteStates[i]);
       }
-
-      _applicationManager.onAppRestored = (int sliderIndex, ProcessVolume app) {
-        _assignedApps[sliderIndex] = app;
-
-        _volumeController.updateAssignedApps(_assignedApps);
-
-        _volumeController.updateSliderTags(_sliderTags);
-
-        if (mounted) {
-          setState(() {});
-        }
-
-        print('Synced restored app: ${app.processPath} on slider $sliderIndex');
-      };
 
       _connectionHandler = ConnectionHandler();
 
@@ -130,16 +129,24 @@ class _HomePageState extends State<HomePage>
       _connectionHandler.initializeDeviceConnection(
           context, _worker.connectionState.first);
 
-      _deviceEventHandler.initialize();
-
       setState(() {
         _configLoaded = true;
       });
 
       _checkForUpdates();
-
       _startPeriodicUIUpdates();
-    });
+    } catch (e) {
+      print('Error initializing services: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to connect to audio service: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+    }
 
     _debugPrintSerialData();
   }
@@ -264,8 +271,32 @@ class _HomePageState extends State<HomePage>
     }
   }
 
+  Future<Uint8List?> nativeIconToBytes(String processPath) async {
+    try {
+      if (Platform.isWindows && await File(processPath).exists()) {
+        final iconData = await IconExtractor.extractSmallIcon(processPath);
+        return iconData;
+      }
+    } catch (e) {
+      print('Error extracting icon: $e');
+    }
+    return null;
+  }
+
   Future<void> _loadIconForApp(String processPath) async {
     if (!_appIcons.containsKey(processPath)) {
+      if (_audioServiceConnected) {
+        try {
+          final iconBase64 = await _audioServiceClient.getIcon(processPath);
+          if (iconBase64 != null) {
+            _appIcons[processPath] = base64Decode(iconBase64);
+            return;
+          }
+        } catch (e) {
+          print('Error getting icon from service: $e');
+        }
+      }
+      // Fallback to local extraction
       _appIcons[processPath] = await nativeIconToBytes(processPath);
     }
   }
@@ -294,6 +325,13 @@ class _HomePageState extends State<HomePage>
         _sliderColors[i] = AppTheme.activeAppColor;
       } else if (sliderTag == ConfigManager.TAG_UNASSIGNED) {
         _sliderColors[i] = AppTheme.unassignedColor;
+      } else if (sliderTag == ConfigManager.TAG_GROUP) {
+        final group = _applicationManager.assignedGroups[i];
+        if (group != null) {
+          _sliderColors[i] = group.color;
+        } else {
+          _sliderColors[i] = AppTheme.defaultAppColor;
+        }
       } else if (sliderTag == ConfigManager.TAG_APP) {
         if (app != null) {
           await _loadIconForApp(app.processPath);
@@ -336,13 +374,7 @@ class _HomePageState extends State<HomePage>
     await _applicationManager.configLoaded;
 
     setState(() {
-      for (int i = 0;
-          i < _sliderValues.length &&
-              i < _applicationManager.sliderValues.length;
-          i++) {
-        _sliderValues[i] = _applicationManager.sliderValues[i];
-      }
-
+      // wait for hardware values
       _sliderTags =
           List.from(_applicationManager.sliderTags.take(_sliderTags.length));
 
@@ -363,12 +395,19 @@ class _HomePageState extends State<HomePage>
     });
 
     await _loadIconsForAssignedApps();
+    if (_worker.isDeviceConnected) {
+      print('Requesting initial hardware values after configuration load...');
+      _worker.requestInitialHardwareValues().then((values) {
+        if (values != null && mounted) {
+          print('Received initial hardware values: $values');
+          _restoreHardwareValues(values);
+        }
+      });
+    }
   }
 
   void _handleSliderData(Map<int, int> data) {
     if (!_configLoaded) return;
-
-    _applicationManager.enableVolumeRestorationForUserAction();
 
     data.forEach((sliderId, sliderValue) {
       if (sliderId >= 0 && sliderId < _sliderValues.length) {
@@ -422,8 +461,6 @@ class _HomePageState extends State<HomePage>
       _connectionHandler.showConnectionNotification(context, connected);
 
       if (connected && _configLoaded) {
-        _applicationManager.enableVolumeRestorationOnDeviceConnect();
-
         _initializeConfiguration().then((_) {
           Future.delayed(const Duration(milliseconds: 1000), () {
             if (_worker.isDeviceConnected && mounted) {
@@ -441,8 +478,6 @@ class _HomePageState extends State<HomePage>
   }
 
   void _handleVolumeAdjustment(int sliderId, double value) {
-    _applicationManager.enableVolumeRestorationForUserAction();
-
     _sliderValues[sliderId] = value;
 
     _muteButtonController.updatePreviousVolumeValue(sliderId, value);
@@ -454,9 +489,6 @@ class _HomePageState extends State<HomePage>
     } else {
       _volumeController.storeVolumeValue(sliderId, value);
     }
-
-    _applicationManager.updateSliderConfig(
-        sliderId, value, _muteButtonController.muteStates[sliderId]);
 
     _uiUpdater.requestUpdate();
   }
@@ -474,17 +506,12 @@ class _HomePageState extends State<HomePage>
   }
 
   void _toggleMute(int index) {
-    _applicationManager.enableVolumeRestorationForUserAction();
-
     if (!_muteButtonController.muteStates[index]) {
       _muteButtonController.previousVolumeValues[index] = _sliderValues[index];
       _volumeController.storeVolumeValue(index, _sliderValues[index]);
     }
 
     _muteButtonController.toggleMuteState(index);
-
-    _applicationManager.updateSliderConfig(
-        index, _sliderValues[index], _muteButtonController.muteStates[index]);
 
     _uiUpdater.requestUpdate();
   }
@@ -506,9 +533,6 @@ class _HomePageState extends State<HomePage>
         } else {
           _volumeController.storeVolumeValue(sliderId, doubleValue);
         }
-
-        _applicationManager.updateSliderConfig(
-            sliderId, doubleValue, _muteButtonController.muteStates[sliderId]);
 
         print('Restored slider $sliderId to hardware value: $hardwareValue');
       }
@@ -535,7 +559,9 @@ class _HomePageState extends State<HomePage>
       _deviceEventHandler.dispose();
       _volumeController.dispose();
       _connectionHandler.dispose();
+      _applicationManager.dispose();
     }
+    _audioServiceClient.dispose();
     windowManager.removeListener(this);
     trayManager.removeListener(this);
     super.dispose();
@@ -585,6 +611,13 @@ class _HomePageState extends State<HomePage>
       _sliderColors[index] = AppTheme.activeAppColor;
     } else if (sliderTag == ConfigManager.TAG_UNASSIGNED) {
       _sliderColors[index] = AppTheme.unassignedColor;
+    } else if (sliderTag == ConfigManager.TAG_GROUP) {
+      final group = _applicationManager.assignedGroups[index];
+      if (group != null) {
+        _sliderColors[index] = group.color;
+      } else {
+        _sliderColors[index] = AppTheme.defaultAppColor;
+      }
     } else if (sliderTag == ConfigManager.TAG_APP) {
       if (app != null) {
         await _loadIconForApp(app.processPath);
@@ -614,6 +647,7 @@ class _HomePageState extends State<HomePage>
     final app = _assignedApps[index];
     final hasMissingApp =
         _applicationManager.missingApplications.containsKey(index);
+    final hasGroup = _applicationManager.assignedGroups.containsKey(index);
 
     if (sliderTag == ConfigManager.TAG_DEFAULT_DEVICE) {
       return Icon(Icons.speaker,
@@ -624,6 +658,21 @@ class _HomePageState extends State<HomePage>
     } else if (sliderTag == ConfigManager.TAG_ACTIVE_APP) {
       return Icon(Icons.app_registration,
           color: Colors.white, size: AppTheme.iconSizeLarge);
+    } else if (sliderTag == ConfigManager.TAG_GROUP && hasGroup) {
+      final group = _applicationManager.assignedGroups[index]!;
+      return Container(
+        width: AppTheme.iconSizeLarge,
+        height: AppTheme.iconSizeLarge,
+        decoration: BoxDecoration(
+          color: group.color,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: const Icon(
+          Icons.folder,
+          color: Colors.white,
+          size: 24,
+        ),
+      );
     } else if (sliderTag == ConfigManager.TAG_APP) {
       if (app != null) {
         final appPath = app.processPath;
@@ -651,6 +700,7 @@ class _HomePageState extends State<HomePage>
     final app = _assignedApps[index];
     final hasMissingApp =
         _applicationManager.missingApplications.containsKey(index);
+    final hasGroup = _applicationManager.assignedGroups.containsKey(index);
 
     if (sliderTag == ConfigManager.TAG_DEFAULT_DEVICE) {
       return Icon(Icons.speaker,
@@ -661,6 +711,21 @@ class _HomePageState extends State<HomePage>
     } else if (sliderTag == ConfigManager.TAG_ACTIVE_APP) {
       return Icon(Icons.app_registration,
           color: Colors.white, size: AppTheme.iconSizeMedium);
+    } else if (sliderTag == ConfigManager.TAG_GROUP && hasGroup) {
+      final group = _applicationManager.assignedGroups[index]!;
+      return Container(
+        width: AppTheme.iconSizeMedium,
+        height: AppTheme.iconSizeMedium,
+        decoration: BoxDecoration(
+          color: group.color,
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: const Icon(
+          Icons.folder,
+          color: Colors.white,
+          size: 18,
+        ),
+      );
     } else if (sliderTag == ConfigManager.TAG_APP) {
       if (app != null) {
         final appPath = app.processPath;
@@ -686,6 +751,7 @@ class _HomePageState extends State<HomePage>
   String _buildSliderTitle(int index) {
     final sliderTag = _sliderTags[index];
     final app = _assignedApps[index];
+    final hasGroup = _applicationManager.assignedGroups.containsKey(index);
 
     if (sliderTag == ConfigManager.TAG_DEFAULT_DEVICE) {
       return 'Device';
@@ -693,6 +759,9 @@ class _HomePageState extends State<HomePage>
       return 'Master\nVolume';
     } else if (sliderTag == ConfigManager.TAG_ACTIVE_APP) {
       return 'Active\nApp';
+    } else if (sliderTag == ConfigManager.TAG_GROUP && hasGroup) {
+      final group = _applicationManager.assignedGroups[index]!;
+      return group.name;
     } else if (sliderTag == ConfigManager.TAG_APP) {
       if (app != null) {
         final appName = app.processPath.split(r'\').last;
@@ -713,6 +782,7 @@ class _HomePageState extends State<HomePage>
   String _buildDialTitle(int index) {
     final sliderTag = _sliderTags[index];
     final app = _assignedApps[index];
+    final hasGroup = _applicationManager.assignedGroups.containsKey(index);
 
     if (sliderTag == ConfigManager.TAG_DEFAULT_DEVICE) {
       return 'Device';
@@ -720,6 +790,9 @@ class _HomePageState extends State<HomePage>
       return 'Master Volume';
     } else if (sliderTag == ConfigManager.TAG_ACTIVE_APP) {
       return 'Active App';
+    } else if (sliderTag == ConfigManager.TAG_GROUP && hasGroup) {
+      final group = _applicationManager.assignedGroups[index]!;
+      return group.name;
     } else if (sliderTag == ConfigManager.TAG_APP) {
       if (app != null) {
         final appName = app.processPath.split(r'\').last;
@@ -740,6 +813,10 @@ class _HomePageState extends State<HomePage>
   bool _isSliderActive(int index) {
     final sliderTag = _sliderTags[index];
     if (sliderTag == ConfigManager.TAG_UNASSIGNED) return false;
+
+    if (sliderTag == ConfigManager.TAG_GROUP) {
+      return _applicationManager.assignedGroups.containsKey(index);
+    }
 
     if (sliderTag == ConfigManager.TAG_APP) {
       return _assignedApps[index] != null ||
@@ -981,7 +1058,8 @@ class _HomePageState extends State<HomePage>
                           .containsKey(dialIndex);
 
                       Color primaryColor;
-                      final sliderTag = _sliderTags[dialIndex];
+                      final sliderTag =
+                          _sliderTags[index]; // or dialIndex for dials
 
                       if (sliderTag == ConfigManager.TAG_DEFAULT_DEVICE) {
                         primaryColor = AppTheme.deviceSliderColor;
@@ -989,8 +1067,12 @@ class _HomePageState extends State<HomePage>
                         primaryColor = AppTheme.masterSliderColor;
                       } else if (sliderTag == ConfigManager.TAG_ACTIVE_APP) {
                         primaryColor = AppTheme.activeSliderColor;
+                      } else if (sliderTag == ConfigManager.TAG_GROUP) {
+                        final group = _applicationManager.assignedGroups[index];
+                        primaryColor =
+                            group?.color ?? AppTheme.unassignedSliderColor;
                       } else if (sliderTag == ConfigManager.TAG_APP) {
-                        if (_assignedApps[dialIndex] != null) {
+                        if (_assignedApps[index] != null) {
                           primaryColor = AppTheme.appSliderColor;
                         } else if (hasMissingApp) {
                           primaryColor = AppTheme.missingAppColor;

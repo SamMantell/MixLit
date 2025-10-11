@@ -23,49 +23,86 @@ class ConfigManager {
   static const String TAG_UNASSIGNED = 'unassigned';
   static const String TAG_GROUP = 'mixlit.group';
 
-  // ==================== GROUP MANAGEMENT ====================
-
   Future<void> saveAppGroup(AppGroup group) async {
     try {
       final existingGroups = await loadAppGroups();
-      
       // Remove existing group with same ID if it exists
       existingGroups.removeWhere((g) => g.id == group.id);
-      
-      // Add the new/updated group
+      // save
       existingGroups.add(group);
-      
-      // Save back to storage
       final groupsJson = existingGroups.map((g) => g.toJson()).toList();
       await _storageManager.saveData('appGroups', groupsJson);
-      
-      print('Saved app group: ${group.name} with ${group.processNames.length} apps');
-    } catch (e) {
+      print(
+          'Saved app group: ${group.name} with ${group.processNames.length} apps');
+    } catch (e, stackTrace) {
       print('Error saving app group: $e');
+      print('Stack trace: $stackTrace');
     }
   }
 
   Future<List<AppGroup>> loadAppGroups() async {
     try {
       final groupsData = await _storageManager.getData('appGroups');
-      if (groupsData == null) return [];
-      
-      final List<dynamic> groupsList = groupsData as List<dynamic>;
-      return groupsList.map((json) => AppGroup.fromJson(json)).toList();
-    } catch (e) {
+
+      if (groupsData == null) {
+        print('No groups data found in storage');
+        return [];
+      }
+
+      final List<dynamic> groupsList;
+      if (groupsData is List) {
+        groupsList = List<dynamic>.from(groupsData);
+      } else {
+        print('ERROR: Expected List but got ${groupsData.runtimeType}');
+        return [];
+      }
+
+      print('Found ${groupsList.length} groups in raw data');
+
+      final groups = <AppGroup>[];
+      for (var i = 0; i < groupsList.length; i++) {
+        try {
+          final groupData = groupsList[i];
+          final Map<String, dynamic> groupMap;
+
+          if (groupData is Map) {
+            groupMap = Map<String, dynamic>.from(groupData);
+
+            if (groupMap['processNames'] is! List<String>) {
+              groupMap['processNames'] =
+                  List<String>.from(groupMap['processNames'] as List);
+            }
+
+            print('Parsing group $i: ${groupMap['name']}');
+            groups.add(AppGroup.fromJson(groupMap));
+          } else {
+            print('WARNING: Group $i is not a Map, skipping');
+          }
+        } catch (e) {
+          print('Error parsing group $i: $e');
+        }
+      }
+
+      return groups;
+    } catch (e, stackTrace) {
       print('Error loading app groups: $e');
+      print('Stack trace: $stackTrace');
       return [];
     }
+  }
+
+  Future<void> debugDumpStorage() async {
+    await _storageManager.dumpStorageContents();
   }
 
   Future<void> deleteAppGroup(String groupId) async {
     try {
       final existingGroups = await loadAppGroups();
       existingGroups.removeWhere((g) => g.id == groupId);
-      
+
       final groupsJson = existingGroups.map((g) => g.toJson()).toList();
       await _storageManager.saveData('appGroups', groupsJson);
-      
+
       print('Deleted app group with ID: $groupId');
     } catch (e) {
       print('Error deleting app group: $e');
@@ -82,46 +119,49 @@ class ConfigManager {
     }
   }
 
-  Future<List<ProcessVolume>> getRunningAppsForGroup(AppGroup group, List<ProcessVolume> runningApps) async {
+  Future<List<ProcessVolume>> getRunningAppsForGroup(
+      AppGroup group, List<ProcessVolume> runningApps) async {
     final matchingApps = <ProcessVolume>[];
-    
+
     for (final processName in group.processNames) {
       final normalizedGroupProcessName = normalizeProcessName(processName);
-      
+
       for (final app in runningApps) {
         final appProcessName = extractProcessName(app.processPath);
         final normalizedAppProcessName = normalizeProcessName(appProcessName);
-        
+
         if (normalizedGroupProcessName == normalizedAppProcessName) {
           matchingApps.add(app);
         }
       }
     }
-    
+
     return matchingApps;
   }
 
-  Future<void> adjustVolumeForGroup(AppGroup group, double volumeLevel, List<ProcessVolume> runningApps) async {
+  Future<void> adjustVolumeForGroup(AppGroup group, double volumeLevel,
+      List<ProcessVolume> runningApps) async {
     final groupApps = await getRunningAppsForGroup(group, runningApps);
-    
+
     for (final app in groupApps) {
       try {
         await adjustVolumeForAllInstances(app, volumeLevel);
       } catch (e) {
-        print('Error adjusting volume for app ${app.processPath} in group ${group.name}: $e');
-        // Continue with other apps even if one fails
+        print(
+            'Error adjusting volume for app ${app.processPath} in group ${group.name}: $e');
+        //(ignores invalid/null apps)
       }
     }
-    
-    print('Adjusted volume for ${groupApps.length} apps in group ${group.name}');
+
+    print(
+        'Adjusted volume for ${groupApps.length} apps in group ${group.name}');
   }
 
-  void updateSliderConfigForGroup(int sliderIndex, AppGroup group, bool isMuted, {double? volumeValue}) {
-    updateSliderConfig(sliderIndex, null, TAG_GROUP, isMuted, 
+  void updateSliderConfigForGroup(int sliderIndex, AppGroup group, bool isMuted,
+      {double? volumeValue}) {
+    updateSliderConfig(sliderIndex, null, TAG_GROUP, isMuted,
         volumeValue: volumeValue, groupId: group.id);
   }
-
-  // ==================== ICON CACHING ====================
 
   String? _iconCachePath;
   final Map<String, String> _iconPathCache = {};
@@ -293,8 +333,6 @@ class ConfigManager {
     }
   }
 
-  // ==================== COM PORT MANAGEMENT ====================
-
   Future<void> saveLastComPort(String portName) async {
     await _storageManager.saveData('last-com-port', portName);
     print('Saved last COM port: $portName');
@@ -306,9 +344,11 @@ class ConfigManager {
     return port;
   }
 
-  // ==================== SLIDER CONFIGURATION ====================
-
-  void updateSliderConfig(int sliderIndex, String? processPath, String sliderTag, bool isMuted, {
+  void updateSliderConfig(
+    int sliderIndex,
+    String? processPath,
+    String sliderTag,
+    bool isMuted, {
     double? volumeValue,
     String? groupId,
   }) {
@@ -316,29 +356,27 @@ class ConfigManager {
       final config = {
         'sliderTag': sliderTag,
         'isMuted': isMuted,
-        'volumeValue': volumeValue ?? 0.0,
-        'lastUpdated': DateTime.now().toIso8601String(),
       };
-      
+
       if (sliderTag == TAG_APP && processPath != null) {
-        config['processPath'] = processPath;
         config['processName'] = extractProcessName(processPath);
       } else if (sliderTag == TAG_GROUP && groupId != null) {
         config['groupId'] = groupId;
       }
-      
+
       _saveSliderConfig(sliderIndex, config);
-      print('Updated slider $sliderIndex config: $sliderTag${groupId != null ? ' (group: $groupId)' : ''}');
+      print(
+          'Updated slider $sliderIndex config: $sliderTag${groupId != null ? ' (group: $groupId)' : ''}');
     } catch (e) {
       print('Error updating slider config: $e');
     }
   }
-  
+
   void _saveSliderConfig(int sliderIndex, Map<String, dynamic> config) {
     if (sliderIndex >= 0 && sliderIndex < _sliderConfigsCache.length) {
       _sliderConfigsCache[sliderIndex] = config;
       _sliderConfigsDirty = true;
-      
+
       // Auto-save after a short delay to batch multiple updates
       Future.delayed(const Duration(milliseconds: 100), () {
         saveAllSliderConfigs();
@@ -382,7 +420,8 @@ class ConfigManager {
         if (index != null && index >= 0 && index < 8) {
           _sliderConfigsCache[index] = Map<String, dynamic>.from(config);
           _sliderConfigsCache[index]!.remove('index');
-          print('Loaded config for slider $index: ${_sliderConfigsCache[index]}');
+          print(
+              'Loaded config for slider $index: ${_sliderConfigsCache[index]}');
         }
       }
 
@@ -424,22 +463,22 @@ class ConfigManager {
   Future<Map<String, dynamic>> _loadAllSliderConfigs() async {
     try {
       await _loadSliderConfigsFromDisk();
-      
-      final List<double> sliderValues = List.filled(8, 0.5);
+
+      final List<double> sliderValues = List.filled(8, 0.5); // Default values
       final List<String> sliderTags = List.filled(8, TAG_DEFAULT_DEVICE);
       final List<bool> muteStates = List.filled(8, false);
       final List<Map<String, dynamic>?> sliderConfigs = List.filled(8, null);
-      
+
       for (int i = 0; i < 8; i++) {
         final config = _sliderConfigsCache[i];
         if (config != null) {
           sliderConfigs[i] = config;
           sliderTags[i] = config['sliderTag'] ?? TAG_DEFAULT_DEVICE;
           muteStates[i] = config['isMuted'] ?? false;
-          sliderValues[i] = (config['volumeValue'] ?? 0.5).toDouble();
+          sliderValues[i] = 0.1;
         }
       }
-      
+
       return {
         'sliderValues': sliderValues,
         'sliderTags': sliderTags,
@@ -464,8 +503,7 @@ class ConfigManager {
   Future<Map<String, dynamic>> loadAllSliderConfigs() async {
     try {
       final configs = await _loadAllSliderConfigs();
-      
-      // Handle group configurations
+
       for (int i = 0; i < configs['sliderConfigs'].length; i++) {
         final config = configs['sliderConfigs'][i];
         if (config != null && config['sliderTag'] == TAG_GROUP) {
@@ -482,15 +520,13 @@ class ConfigManager {
           }
         }
       }
-      
+
       return configs;
     } catch (e) {
       print('Error loading slider configs with groups: $e');
       return _getDefaultConfigs();
     }
   }
-
-  // ==================== UTILITY METHODS ====================
 
   String extractProcessName(String processPath) {
     if (processPath.isEmpty) return '';
@@ -603,8 +639,6 @@ class ConfigManager {
       print('Error adjusting volume for all instances: $e');
     }
   }
-
-  // ==================== APPLICATION STATE MANAGEMENT ====================
 
   Future<void> saveApplicationState(
       List<double> sliderValues,

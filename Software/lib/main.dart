@@ -7,6 +7,7 @@ import 'package:tray_manager/tray_manager.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:launch_at_startup/launch_at_startup.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:path/path.dart' as path;
 
 class StartupConfig {
   static const String _autoStartupEnabledKey = 'auto_startup_enabled';
@@ -21,9 +22,44 @@ class StartupConfig {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_autoStartupEnabledKey, enabled);
     if (enabled) {
-      await launchAtStartup.enable();
+      await _enableLauncherStartup();
     } else {
       await launchAtStartup.disable();
+    }
+  }
+
+  /// Start up launcher app (for starting service first + this app)
+  static Future<void> _enableLauncherStartup() async {
+    try {
+      final appDir = path.dirname(Platform.resolvedExecutable);
+      final launcherPath = path.join(appDir, 'MixLit-Launcher.exe');
+
+      if (await File(launcherPath).exists()) {
+        launchAtStartup.setup(
+          appName: "MixLit",
+          appPath: launcherPath,
+          args: ['--auto-start'],
+        );
+        await launchAtStartup.enable();
+        print('Configured startup to launch: $launcherPath');
+      } else {
+        print(
+            'Warning: Launcher not found at $launcherPath, using direct launch');
+        launchAtStartup.setup(
+          appName: "MixLit",
+          appPath: Platform.resolvedExecutable,
+          args: ['--auto-start'],
+        );
+        await launchAtStartup.enable();
+      }
+    } catch (e) {
+      print('Error setting up launcher startup: $e');
+      launchAtStartup.setup(
+        appName: "MixLit",
+        appPath: Platform.resolvedExecutable,
+        args: ['--auto-start'],
+      );
+      await launchAtStartup.enable();
     }
   }
 
@@ -66,14 +102,26 @@ Future<void> main(List<String> args) async {
 
   windowManager.setPreventClose(minimizeToTray);
 
-  launchAtStartup.setup(
-    appName: "MixLit",
-    appPath: Platform.resolvedExecutable,
-    args: ['--auto-start'],
-  );
+  // Setup initial launch configuration (will be overridden by StartupConfig)
+  final appDir = path.dirname(Platform.resolvedExecutable);
+  final launcherPath = path.join(appDir, 'MixLit-Launcher.exe');
+
+  if (await File(launcherPath).exists()) {
+    launchAtStartup.setup(
+      appName: "MixLit",
+      appPath: launcherPath,
+      args: ['--auto-start'],
+    );
+  } else {
+    launchAtStartup.setup(
+      appName: "MixLit",
+      appPath: Platform.resolvedExecutable,
+      args: ['--auto-start'],
+    );
+  }
 
   if (autoStartupEnabled) {
-    await launchAtStartup.enable();
+    await StartupConfig.setAutoStartupEnabled(true);
   } else {
     await launchAtStartup.disable();
   }

@@ -1,16 +1,13 @@
 import 'dart:async';
 import 'package:mixlit/backend/application/audio/ApplicationManager.dart';
-import 'package:mixlit/backend/application/audio/AppInstanceManager.dart';
-import 'package:mixlit/backend/application/data/ConfigManager.dart';
-import 'package:win32audio/win32audio.dart';
+import 'package:mixlit/backend/application/audio/audio_service_client.dart';
 
 class VolumeController {
   final ApplicationManager applicationManager;
   List<String> sliderTags;
-  List<ProcessVolume?> assignedApps;
-  final AppInstanceManager _appInstanceManager = AppInstanceManager.instance;
+  List<AudioSessionInfo?> assignedApps;
 
-  static const int RATE_LIMIT_MS = 10;
+  static const int RATE_LIMIT_MS = 1;
   DateTime _lastVolumeUpdate = DateTime.now();
   Timer? _pendingVolumeTimer;
   final Map<int, double> _pendingVolumeChanges = {};
@@ -37,7 +34,7 @@ class VolumeController {
     sliderTags = newTags;
   }
 
-  void updateAssignedApps(List<ProcessVolume?> newApps) {
+  void updateAssignedApps(List<AudioSessionInfo?> newApps) {
     assignedApps = newApps;
   }
 
@@ -114,75 +111,16 @@ class VolumeController {
 
     applicationManager.sliderValues[sliderId] = value;
 
-    if (tag == ConfigManager.TAG_DEFAULT_DEVICE ||
-        tag == ConfigManager.TAG_MASTER_VOLUME) {
-      int volumeLevel = ((value / 1024) * 100).round();
-      Audio.setVolume(volumeLevel / 100, AudioDeviceType.output);
-    } else if (tag == ConfigManager.TAG_GROUP) {
-      // Handle group volume adjustment
-      await _adjustGroupVolume(sliderId, value);
-    } else if (tag == ConfigManager.TAG_APP && assignedApps[sliderId] != null) {
-      final app = assignedApps[sliderId];
-      if (app != null) {
-        await _adjustSingleAppVolume(app, value);
-      }
-    } else if (tag == ConfigManager.TAG_ACTIVE_APP) {
-      // Handle active app volume
-    }
+    // All volume adjustments now go through ApplicationManager
+    // which uses the audio service client
+    //TODO: Remove ALL instances of win32audio API
+    await applicationManager.adjustVolume(sliderId, value);
 
     bool isMuted =
         fromRestore ? _muteStates[sliderId] ?? false : (value <= muteVolume);
-    applicationManager.updateSliderConfig(sliderId, value, isMuted);
-  }
-
-  Future<void> _adjustGroupVolume(int sliderId, double value) async {
-    final group = applicationManager.assignedGroups[sliderId];
-    if (group == null) return;
-
-    try {
-      double volumeLevel = value / 1024;
-      if (volumeLevel <= 0.009) {
-        volumeLevel = 0.0001;
-      }
-
-      final runningApps = await applicationManager.getRunningApplicationsWithAudio();
-      final configManager = ConfigManager.instance;
-      
-      await configManager.adjustVolumeForGroup(group, volumeLevel, runningApps);
-      
-      print('Adjusted volume for group "${group.name}" to level $volumeLevel');
-    } catch (e) {
-      print('Error adjusting group volume: $e');
-    }
-  }
-
-  Future<void> _adjustSingleAppVolume(ProcessVolume app, double value) async {
-    double volumeLevel = value / 1024;
-    if (volumeLevel <= 0.009) {
-      volumeLevel = 0.0001;
-    }
-
-    try {
-      bool hasMultipleInstances =
-          await _appInstanceManager.hasMultipleInstances(app);
-      if (hasMultipleInstances) {
-        await _appInstanceManager.setVolumeForAllInstances(app, volumeLevel);
-      } else {
-        Audio.setAudioMixerVolume(app.processId, volumeLevel);
-      }
-    } catch (e) {
-      print('Error adjusting app volume: $e');
-      try {
-        Audio.setAudioMixerVolume(app.processId, volumeLevel);
-      } catch (fallbackError) {
-        print('Fallback volume adjustment failed: $fallbackError');
-      }
-    }
   }
 
   Future<void> setMuteState(int sliderId, bool isMuted) async {
-    applicationManager.enableVolumeRestorationForUserAction();
-
     updateMuteState(sliderId, isMuted);
 
     if (isMuted) {
@@ -195,7 +133,7 @@ class VolumeController {
       await directVolumeAdjustment(sliderId, storedValue);
     }
 
-    applicationManager.setMuteState(sliderId, isMuted);
+    await applicationManager.setMuteState(sliderId, isMuted);
   }
 
   void assignSpecialFeature(int sliderId, String featureTag) {

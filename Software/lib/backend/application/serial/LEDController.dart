@@ -4,8 +4,8 @@ import 'package:mixlit/backend/application/serial/SerialWorker.dart';
 import 'package:mixlit/backend/application/util/IconColourExtractor.dart';
 import 'package:mixlit/backend/application/data/ConfigManager.dart';
 import 'package:mixlit/backend/application/audio/ApplicationManager.dart';
+import 'package:mixlit/backend/application/audio/audio_service_client.dart';
 import 'package:mixlit/frontend/components/util/rate_limit_updates.dart';
-import 'package:win32audio/win32audio.dart';
 
 /// LED controller for setting LEDs
 class LEDController {
@@ -21,7 +21,7 @@ class LEDController {
   late final RateLimitedUpdater _ledUpdater;
   final Map<int, bool> _pendingSliderUpdates = {};
 
-  static const int LED_UPDATE_INTERVAL_MS = 100; // Reduced from 50ms
+  static const int LED_UPDATE_INTERVAL_MS = 100;
 
   LEDController({
     required SerialWorker serialWorker,
@@ -65,7 +65,6 @@ class LEDController {
     setAnimated(!_isAnimated);
   }
 
-  // rate limited update request
   void _requestAllLEDUpdate() {
     for (int i = 0; i < _sliderValues.length; i++) {
       _pendingSliderUpdates[i] = true;
@@ -90,7 +89,6 @@ class LEDController {
     }
   }
 
-  /// Update specific slider LEDs with colors and value, anim state etc.. (rate limiting added too)
   Future<void> updateSliderLEDs(int sliderIndex) async {
     if (!_serialWorker.isDeviceConnected ||
         sliderIndex >= _sliderValues.length) {
@@ -190,7 +188,7 @@ class LEDController {
     }
   }
 
-  ProcessVolume? _getAppForSlider(int sliderIndex) {
+  AudioSessionInfo? _getAppForSlider(int sliderIndex) {
     if (sliderIndex < 0 || sliderIndex >= _sliderTags.length) {
       return null;
     }

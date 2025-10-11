@@ -1,19 +1,19 @@
+import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:mixlit/backend/application/data/ConfigManager.dart';
-import 'package:win32audio/win32audio.dart';
+import 'package:mixlit/backend/application/audio/audio_service_client.dart';
 import 'package:mixlit/backend/application/audio/ApplicationManager.dart';
-import 'package:mixlit/backend/application/audio/AppInstanceManager.dart';
 
-// New class to represent an app group
 class AppGroup {
   final String id;
   final String name;
   final List<String> processNames;
   final Color color;
   final DateTime createdAt;
+  final String? iconData;
 
   AppGroup({
     required this.id,
@@ -21,7 +21,26 @@ class AppGroup {
     required this.processNames,
     required this.color,
     required this.createdAt,
+    this.iconData,
   });
+
+  AppGroup copyWith({
+    String? id,
+    String? name,
+    List<String>? processNames,
+    Color? color,
+    DateTime? createdAt,
+    String? iconData,
+  }) {
+    return AppGroup(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      processNames: processNames ?? this.processNames,
+      color: color ?? this.color,
+      createdAt: createdAt ?? this.createdAt,
+      iconData: iconData ?? this.iconData,
+    );
+  }
 
   Map<String, dynamic> toJson() {
     return {
@@ -30,6 +49,7 @@ class AppGroup {
       'processNames': processNames,
       'color': color.value,
       'createdAt': createdAt.toIso8601String(),
+      if (iconData != null) 'iconData': iconData,
     };
   }
 
@@ -40,28 +60,41 @@ class AppGroup {
       processNames: List<String>.from(json['processNames']),
       color: Color(json['color']),
       createdAt: DateTime.parse(json['createdAt']),
+      iconData: json['iconData'],
     );
   }
 }
 
-Future<List<ProcessVolume?>> assignApplication(
+Future<List<AudioSessionInfo?>> assignApplication(
   BuildContext context,
   int sliderIndex,
   ApplicationManager applicationManager,
-  List<ProcessVolume?> assignedApps,
+  List<AudioSessionInfo?> assignedApps,
   Map<String, Uint8List?> appIcons,
   List<double> sliderValues,
   List<String> sliderTags,
 ) async {
-  final appInstanceManager = AppInstanceManager.instance;
-  final runningApps = await appInstanceManager.getUniqueApps();
-  await fetchAllAppIcons(runningApps, appIcons);
+  final runningApps =
+      await applicationManager.getRunningApplicationsWithAudio();
+  await fetchAllAppIcons(
+    runningApps,
+    appIcons,
+    audioServiceClient: applicationManager.audioServiceClient,
+  );
 
   final previousTag = sliderTags[sliderIndex];
   final previousApp = assignedApps[sliderIndex];
 
-  //removes apps already assigned to a slider
   final availableApps = runningApps.where((app) {
+    final hasIcon = appIcons[app.processPath] != null;
+    final hasValidName = app.processName.isNotEmpty &&
+        app.processName.toLowerCase() != 'unknown' &&
+        app.processPath.isNotEmpty;
+
+    if (!hasIcon && !hasValidName) {
+      return false;
+    }
+
     for (var i = 0; i < assignedApps.length; i++) {
       if (i != sliderIndex && assignedApps[i] != null) {
         final assignedApp = assignedApps[i]!;
@@ -78,7 +111,6 @@ Future<List<ProcessVolume?>> assignApplication(
     return true;
   }).toList();
 
-  // Create the noise texture bytes from base64
   const String noiseTextureBase64 =
       'PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8ZGVmcz4KICAgIDxmaWx0ZXIgaWQ9Im5vaXNlIj4KICAgICAgPGZlVHVyYnVsZW5jZSBiYXNlRnJlcXVlbmN5PSIwLjkiIG51bU9jdGF2ZXM9IjQiIHNlZWQ9IjIiLz4KICAgICAgPGZlQ29sb3JNYXRyaXggdHlwZT0ic2F0dXJhdGUiIHZhbHVlcz0iMCIvPgogICAgPC9maWx0ZXI+CiAgPC9kZWZzPgogIDxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbHRlcj0idXJsKCNub2lzZSkiIG9wYWNpdHk9IjAuMDUiLz4KPC9zdmc+';
   final Uint8List noiseTextureBytes = base64Decode(noiseTextureBase64);
@@ -94,11 +126,12 @@ Future<List<ProcessVolume?>> assignApplication(
         child: Stack(
           children: [
             DefaultTabController(
-              length: 3, // Changed from 2 to 3 to include Groups tab
+              length: 3,
               child: Dialog(
                 backgroundColor: Colors.transparent,
                 child: Container(
                   width: MediaQuery.of(context).size.width * 0.6,
+                  height: MediaQuery.of(context).size.height * 0.7,
                   padding: const EdgeInsets.all(24),
                   decoration: BoxDecoration(
                     image: DecorationImage(
@@ -174,6 +207,10 @@ Future<List<ProcessVolume?>> assignApplication(
                                           iconData,
                                           width: 32,
                                           height: 32,
+                                          errorBuilder:
+                                              (context, error, stack) =>
+                                                  const Icon(Icons.apps,
+                                                      color: Colors.white),
                                         )
                                       : const Icon(Icons.apps,
                                           color: Colors.white),
@@ -269,7 +306,8 @@ Future<List<ProcessVolume?>> assignApplication(
             ),
             Positioned(
               top: MediaQuery.of(context).size.height * 0.5 -
-                  (MediaQuery.of(context).size.height * 0.48),
+                  (MediaQuery.of(context).size.height * 0.48) +
+                  90,
               right: MediaQuery.of(context).size.width * 0.2 - 12,
               child: Transform.rotate(
                 angle: 8 * (3.14159 / 180),
@@ -315,24 +353,17 @@ Future<List<ProcessVolume?>> assignApplication(
 
     switch (type) {
       case 'app':
-        final app = result['app'] as ProcessVolume;
+        final app = result['app'] as AudioSessionInfo;
         assignedApps[sliderIndex] = app;
         sliderTags[sliderIndex] = ConfigManager.TAG_APP;
-        applicationManager.assignApplicationToSlider(sliderIndex, app);
-
-        bool hasMultipleInstances =
-            await appInstanceManager.hasMultipleInstances(app);
-        if (hasMultipleInstances) {
-          double volumeLevel = sliderValues[sliderIndex] / 1024;
-          await appInstanceManager.setVolumeForAllInstances(app, volumeLevel);
-        }
+        await applicationManager.assignApplicationToSlider(sliderIndex, app);
         break;
 
       case 'group':
         final group = result['group'] as AppGroup;
-        assignedApps[sliderIndex] = null; // Groups don't have a single ProcessVolume
+        assignedApps[sliderIndex] = null;
         sliderTags[sliderIndex] = ConfigManager.TAG_GROUP;
-        applicationManager.assignGroupToSlider(sliderIndex, group);
+        await applicationManager.assignGroupToSlider(sliderIndex, group);
         break;
 
       case 'device':
@@ -360,7 +391,6 @@ Future<List<ProcessVolume?>> assignApplication(
         assignedApps[sliderIndex] = null;
         sliderTags[sliderIndex] = ConfigManager.TAG_UNASSIGNED;
         applicationManager.resetSliderConfiguration(sliderIndex);
-
         appIcons.remove(sliderIndex);
         break;
 
@@ -376,9 +406,8 @@ Future<List<ProcessVolume?>> assignApplication(
   return assignedApps;
 }
 
-// New widget for the Groups tab content
 class GroupsTabContent extends StatefulWidget {
-  final List<ProcessVolume> availableApps;
+  final List<AudioSessionInfo> availableApps;
   final Map<String, Uint8List?> appIcons;
   final bool isDarkMode;
 
@@ -396,6 +425,8 @@ class GroupsTabContent extends StatefulWidget {
 class _GroupsTabContentState extends State<GroupsTabContent> {
   List<AppGroup> savedGroups = [];
   bool isCreatingGroup = false;
+  AppGroup? editingGroup;
+  bool _isLoading = true;
 
   @override
   void initState() {
@@ -404,44 +435,122 @@ class _GroupsTabContentState extends State<GroupsTabContent> {
   }
 
   Future<void> _loadSavedGroups() async {
+    setState(() {
+      _isLoading = true;
+    });
+
     try {
       final configManager = ConfigManager.instance;
       final groups = await configManager.loadAppGroups();
-      setState(() {
-        savedGroups = groups;
-      });
+      print(
+          'Loaded ${groups.length} groups from storage'); // ADD THIS DEBUG LINE
+
+      if (mounted) {
+        setState(() {
+          savedGroups = groups;
+          _isLoading = false;
+        });
+      }
     } catch (e) {
       print('Error loading saved groups: $e');
-      setState(() {
-        savedGroups = [];
-      });
+      if (mounted) {
+        setState(() {
+          savedGroups = [];
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _deleteGroup(AppGroup group) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: widget.isDarkMode
+            ? const Color(0xFF2A2A2A)
+            : const Color.fromARGB(255, 240, 240, 240),
+        title: Text(
+          'Delete Group',
+          style: TextStyle(
+            fontFamily: 'BitstreamVeraSans',
+            color: widget.isDarkMode ? Colors.white : Colors.black87,
+          ),
+        ),
+        content: Text(
+          'Are you sure you want to delete "${group.name}"?',
+          style: TextStyle(
+            fontFamily: 'BitstreamVeraSans',
+            color: widget.isDarkMode ? Colors.white70 : Colors.black54,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm == true) {
+      try {
+        final configManager = ConfigManager.instance;
+        await configManager.deleteAppGroup(group.id);
+        setState(() {
+          savedGroups.removeWhere((g) => g.id == group.id);
+        });
+      } catch (e) {
+        print('Error deleting group: $e');
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (isCreatingGroup) {
+    if (isCreatingGroup || editingGroup != null) {
       return GroupCreationWidget(
         availableApps: widget.availableApps,
         appIcons: widget.appIcons,
         isDarkMode: widget.isDarkMode,
-        onGroupCreated: (group) {
+        existingGroup: editingGroup,
+        onGroupCreated: (group) async {
           setState(() {
-            savedGroups.add(group);
+            if (editingGroup != null) {
+              // Update existing group
+              final index = savedGroups.indexWhere((g) => g.id == group.id);
+              if (index != -1) {
+                savedGroups[index] = group;
+              }
+            } else {
+              // Add new group
+              savedGroups.add(group);
+            }
             isCreatingGroup = false;
+            editingGroup = null;
           });
         },
         onCancel: () {
           setState(() {
             isCreatingGroup = false;
+            editingGroup = null;
           });
         },
       );
     }
 
+    if (_isLoading) {
+      return const Center(
+        child: CircularProgressIndicator(),
+      );
+    }
+
     return Column(
       children: [
-        // Create new group button
         Container(
           margin: const EdgeInsets.only(bottom: 16),
           child: Material(
@@ -485,7 +594,6 @@ class _GroupsTabContentState extends State<GroupsTabContent> {
             ),
           ),
         ),
-        // Saved groups list
         Expanded(
           child: savedGroups.isEmpty
               ? Center(
@@ -531,8 +639,28 @@ class _GroupsTabContentState extends State<GroupsTabContent> {
                           fontSize: 12,
                         ),
                       ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.edit,
+                                color: Colors.white70, size: 20),
+                            onPressed: () {
+                              setState(() {
+                                editingGroup = group;
+                              });
+                            },
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.delete,
+                                color: Colors.red, size: 20),
+                            onPressed: () => _deleteGroup(group),
+                          ),
+                        ],
+                      ),
                       onTap: () {
-                        Navigator.pop(context, {'type': 'group', 'group': group});
+                        Navigator.pop(
+                            context, {'type': 'group', 'group': group});
                       },
                     );
                   },
@@ -543,13 +671,13 @@ class _GroupsTabContentState extends State<GroupsTabContent> {
   }
 }
 
-// New widget for creating groups
 class GroupCreationWidget extends StatefulWidget {
-  final List<ProcessVolume> availableApps;
+  final List<AudioSessionInfo> availableApps;
   final Map<String, Uint8List?> appIcons;
   final bool isDarkMode;
   final Function(AppGroup) onGroupCreated;
   final VoidCallback onCancel;
+  final AppGroup? existingGroup;
 
   const GroupCreationWidget({
     super.key,
@@ -558,6 +686,7 @@ class GroupCreationWidget extends StatefulWidget {
     required this.isDarkMode,
     required this.onGroupCreated,
     required this.onCancel,
+    this.existingGroup,
   });
 
   @override
@@ -565,9 +694,11 @@ class GroupCreationWidget extends StatefulWidget {
 }
 
 class _GroupCreationWidgetState extends State<GroupCreationWidget> {
-  final TextEditingController _nameController = TextEditingController();
-  final Set<String> _selectedApps = {};
-  Color _selectedColor = Colors.blue;
+  late TextEditingController _nameController;
+  late Set<String> _selectedApps;
+  late Color _selectedColor;
+
+  final Map<String, Uint8List?> _inactiveAppIcons = {};
 
   final List<Color> _availableColors = [
     Colors.blue,
@@ -583,20 +714,89 @@ class _GroupCreationWidgetState extends State<GroupCreationWidget> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    _nameController = TextEditingController(
+      text: widget.existingGroup?.name ?? '',
+    );
+    _selectedApps = widget.existingGroup?.processNames.toSet() ?? {};
+    _selectedColor = widget.existingGroup?.color ?? Colors.blue;
+
+    _loadInactiveAppIcons();
+  }
+
+  Future<void> _loadInactiveAppIcons() async {
+    if (widget.existingGroup == null) return;
+
+    final configManager = ConfigManager.instance;
+
+    for (final processName in widget.existingGroup!.processNames) {
+      // Check if this app is not in the active apps list
+      final isActive = widget.availableApps
+          .any((app) => app.processPath.split(r'\').last == processName);
+
+      if (!isActive) {
+        // load cached icon
+        try {
+          final cachedIconPath =
+              await configManager.getCachedIconByProcessName(processName);
+          if (cachedIconPath != null) {
+            final iconFile = File(cachedIconPath);
+            if (await iconFile.exists()) {
+              final iconData = await iconFile.readAsBytes();
+              if (mounted) {
+                setState(() {
+                  _inactiveAppIcons[processName] = iconData;
+                });
+              }
+            }
+          }
+        } catch (e) {
+          print('Error loading cached icon for $processName: $e');
+        }
+      }
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final isEditing = widget.existingGroup != null;
+
+    final Map<String, AudioSessionInfo?> allApps = {};
+
+    for (final app in widget.availableApps) {
+      final processName = app.processPath.split(r'\').last;
+      allApps[processName] = app;
+    }
+
+    if (widget.existingGroup != null) {
+      for (final processName in widget.existingGroup!.processNames) {
+        if (!allApps.containsKey(processName)) {
+          allApps[processName] = null;
+        }
+      }
+    }
+
+    // Sort apps: active first, then inactive
+    final sortedAppEntries = allApps.entries.toList()
+      ..sort((a, b) {
+        if (a.value != null && b.value == null) return -1;
+        if (a.value == null && b.value != null) return 1;
+        return _formatAppName(a.key).compareTo(_formatAppName(b.key));
+      });
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Header
         Row(
           children: [
             IconButton(
               icon: const Icon(Icons.arrow_back, color: Colors.white),
               onPressed: widget.onCancel,
             ),
-            const Text(
-              'Create New Group',
-              style: TextStyle(
+            Text(
+              isEditing ? 'Edit Group' : 'Create New Group',
+              style: const TextStyle(
                 fontFamily: 'BitstreamVeraSans',
                 color: Colors.white,
                 fontSize: 18,
@@ -606,8 +806,6 @@ class _GroupCreationWidgetState extends State<GroupCreationWidget> {
           ],
         ),
         const SizedBox(height: 16),
-
-        // Group name input
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
@@ -632,10 +830,8 @@ class _GroupCreationWidgetState extends State<GroupCreationWidget> {
           ),
         ),
         const SizedBox(height: 16),
-
-        // Color picker
         const Text(
-          'Group Color:',
+          'Group Colour:',
           style: TextStyle(
             fontFamily: 'BitstreamVeraSans',
             color: Colors.white,
@@ -669,29 +865,46 @@ class _GroupCreationWidgetState extends State<GroupCreationWidget> {
           }).toList(),
         ),
         const SizedBox(height: 16),
-
-        // Apps selection
-        const Text(
-          'Select Applications:',
-          style: TextStyle(
-            fontFamily: 'BitstreamVeraSans',
-            color: Colors.white,
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
-          ),
+        Row(
+          children: [
+            const Text(
+              'Select Applications:',
+              style: TextStyle(
+                fontFamily: 'BitstreamVeraSans',
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '(${_selectedApps.length} selected)',
+              style: TextStyle(
+                fontFamily: 'BitstreamVeraSans',
+                color: Colors.white.withOpacity(0.6),
+                fontSize: 12,
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 8),
-
-        // Apps list
         Expanded(
           child: ListView.builder(
-            itemCount: widget.availableApps.length,
+            itemCount: sortedAppEntries.length,
             itemBuilder: (context, index) {
-              final app = widget.availableApps[index];
-              final processName = app.processPath.split(r'\').last;
+              final entry = sortedAppEntries[index];
+              final processName = entry.key;
+              final app = entry.value; // null if inactive
               final appName = _formatAppName(processName);
-              final iconData = widget.appIcons[app.processPath];
+              final isActive = app != null;
               final isSelected = _selectedApps.contains(processName);
+
+              Uint8List? iconData;
+              if (isActive) {
+                iconData = widget.appIcons[app.processPath];
+              } else {
+                iconData = _inactiveAppIcons[processName];
+              }
 
               return CheckboxListTile(
                 value: isSelected,
@@ -704,28 +917,77 @@ class _GroupCreationWidgetState extends State<GroupCreationWidget> {
                     }
                   });
                 },
-                title: Text(
-                  appName,
-                  style: const TextStyle(
-                    fontFamily: 'BitstreamVeraSans',
-                    color: Colors.white,
-                  ),
+                title: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        appName,
+                        style: TextStyle(
+                          fontFamily: 'BitstreamVeraSans',
+                          color: isActive
+                              ? Colors.white
+                              : Colors.white.withOpacity(0.5),
+                        ),
+                      ),
+                    ),
+                    if (!isActive)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color.fromARGB(255, 241, 199, 137)
+                              .withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(
+                            color: const Color.fromARGB(255, 226, 178, 105)
+                                .withOpacity(0.5),
+                            width: 1,
+                          ),
+                        ),
+                        child: Text(
+                          'Closed',
+                          style: TextStyle(
+                            fontFamily: 'BitstreamVeraSans',
+                            color: const Color.fromARGB(255, 255, 227, 152)
+                                .withOpacity(0.9),
+                            fontSize: 10,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
                 secondary: iconData != null
-                    ? Image.memory(
-                        iconData,
-                        width: 32,
-                        height: 32,
+                    ? Opacity(
+                        opacity: isActive ? 1.0 : 0.5,
+                        child: Image.memory(
+                          iconData,
+                          width: 32,
+                          height: 32,
+                          errorBuilder: (context, error, stack) => Icon(
+                            Icons.apps,
+                            color: isActive
+                                ? Colors.white
+                                : Colors.white.withOpacity(0.5),
+                          ),
+                        ),
                       )
-                    : const Icon(Icons.apps, color: Colors.white),
+                    : Icon(
+                        Icons.apps,
+                        color: isActive
+                            ? Colors.white
+                            : Colors.white.withOpacity(0.5),
+                      ),
                 activeColor: _selectedColor,
                 checkColor: Colors.white,
+                // Dim the entire tile if inactive
+                tileColor: isActive ? null : Colors.black.withOpacity(0.2),
               );
             },
           ),
         ),
-
-        // Create button
         Container(
           width: double.infinity,
           margin: const EdgeInsets.only(top: 16),
@@ -739,9 +1001,9 @@ class _GroupCreationWidgetState extends State<GroupCreationWidget> {
                 borderRadius: BorderRadius.circular(8),
               ),
             ),
-            child: const Text(
-              'Create Group',
-              style: TextStyle(
+            child: Text(
+              isEditing ? 'Save Changes' : 'Create Group',
+              style: const TextStyle(
                 fontFamily: 'BitstreamVeraSans',
                 fontSize: 16,
                 fontWeight: FontWeight.w500,
@@ -759,21 +1021,20 @@ class _GroupCreationWidgetState extends State<GroupCreationWidget> {
 
   void _createGroup() async {
     final group = AppGroup(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      id: widget.existingGroup?.id ??
+          DateTime.now().millisecondsSinceEpoch.toString(),
       name: _nameController.text.trim(),
       processNames: _selectedApps.toList(),
       color: _selectedColor,
-      createdAt: DateTime.now(),
+      createdAt: widget.existingGroup?.createdAt ?? DateTime.now(),
     );
 
-    // Save the group to storage
     try {
       final configManager = ConfigManager.instance;
       await configManager.saveAppGroup(group);
       widget.onGroupCreated(group);
     } catch (e) {
       print('Error saving group: $e');
-      // Still call onGroupCreated even if save fails
       widget.onGroupCreated(group);
     }
   }
@@ -785,108 +1046,6 @@ class _GroupCreationWidgetState extends State<GroupCreationWidget> {
   }
 }
 
-// Rest of the existing functions remain the same...
-
-Widget _buildSystemOption(
-  BuildContext context,
-  bool isDarkMode,
-  IconData icon,
-  String title,
-  String subtitle,
-  VoidCallback onTap, {
-  bool isDestructive = false,
-}) {
-  return Container(
-    margin: const EdgeInsets.symmetric(vertical: 2),
-    decoration: BoxDecoration(
-      borderRadius: BorderRadius.circular(8),
-      color: Colors.transparent,
-    ),
-    child: Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(8),
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          child: Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(8),
-                  color: isDestructive
-                      ? Colors.red.withOpacity(0.1)
-                      : isDarkMode
-                          ? Colors.white.withOpacity(0.1)
-                          : Colors.black.withOpacity(0.1),
-                  border: isDestructive
-                      ? Border.all(color: Colors.red.withOpacity(0.3))
-                      : null,
-                ),
-                child: Icon(
-                  icon,
-                  color: isDestructive
-                      ? Colors.red
-                      : isDarkMode
-                          ? Colors.white
-                          : Colors.black54,
-                  size: 20,
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: TextStyle(
-                        fontFamily: 'BitstreamVeraSans',
-                        color: isDestructive
-                            ? Colors.red
-                            : isDarkMode
-                                ? Colors.white
-                                : const Color.fromARGB(255, 92, 92, 92),
-                        fontWeight: FontWeight.w500,
-                        fontSize: 16,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      subtitle,
-                      style: TextStyle(
-                        fontFamily: 'BitstreamVeraSans',
-                        color: isDestructive
-                            ? Colors.red.withOpacity(0.7)
-                            : isDarkMode
-                                ? Colors.white.withOpacity(0.6)
-                                : const Color.fromARGB(255, 92, 92, 92)
-                                    .withOpacity(0.6),
-                        fontSize: 13,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    ),
-  );
-}
-
-Future<void> fetchAllAppIcons(
-    List<ProcessVolume> apps, Map<String, Uint8List?> appIcons) async {
-  for (var app in apps) {
-    if (!appIcons.containsKey(app.processPath)) {
-      appIcons[app.processPath] = await nativeIconToBytes(app.processPath);
-    }
-  }
-}
-
 String _formatAppName(String appName) {
   appName = appName.replaceAll('.exe', '');
 
@@ -895,4 +1054,36 @@ String _formatAppName(String appName) {
   }
 
   return appName[0].toUpperCase() + appName.substring(1);
+}
+
+Future<void> fetchAllAppIcons(
+    List<AudioSessionInfo> apps, Map<String, Uint8List?> appIcons,
+    {AudioServiceClient? audioServiceClient}) async {
+  for (var app in apps) {
+    if (!appIcons.containsKey(app.processPath) ||
+        appIcons[app.processPath] == null) {
+      if (app.iconBase64 != null && app.iconBase64!.isNotEmpty) {
+        try {
+          appIcons[app.processPath] = base64Decode(app.iconBase64!);
+          continue;
+        } catch (e) {
+          print('Error decoding icon for ${app.processPath}: $e');
+        }
+      }
+
+      if (audioServiceClient != null) {
+        try {
+          final iconBase64 = await audioServiceClient.getIcon(app.processPath);
+          if (iconBase64 != null && iconBase64.isNotEmpty) {
+            appIcons[app.processPath] = base64Decode(iconBase64);
+            continue;
+          }
+        } catch (e) {
+          print('Error fetching icon from service for ${app.processPath}: $e');
+        }
+      }
+
+      appIcons[app.processPath] = null;
+    }
+  }
 }

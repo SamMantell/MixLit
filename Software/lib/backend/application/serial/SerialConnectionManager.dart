@@ -341,13 +341,20 @@ class SerialConnectionManager {
               return;
             }
 
-            if (response.contains('|') && !receivedInitialData) {
-              receivedInitialData = true;
+            // IMPORTANT: Capture initial data even if not explicitly awaiting
+            if (response.contains('|')) {
               print('Received initial data during verification: $response');
+              final parsedData = _parseSliderData(response);
 
-              if (_awaitingInitialValues) {
-                final parsedData = _parseSliderData(response);
-                if (parsedData.isNotEmpty &&
+              if (parsedData.isNotEmpty) {
+                // Store hard-state of device potentiometers
+                if (onInitialHardwareValues != null) {
+                  print('Forwarding initial hardware values: $parsedData');
+                  onInitialHardwareValues!(parsedData);
+                }
+
+                // & complete the completer if waiting
+                if (_awaitingInitialValues &&
                     !_initialValuesCompleter.isCompleted) {
                   _initialValuesCompleter.complete(parsedData);
                   _initialValuesTimeout?.cancel();
