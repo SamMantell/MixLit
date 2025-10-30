@@ -14,12 +14,16 @@ class AudioServiceClient {
       StreamController<AudioSessionInfo>.broadcast();
   final _sessionRemovedController =
       StreamController<AudioSessionInfo>.broadcast();
+  final _sessionUpdatedController =
+      StreamController<AudioSessionInfo>.broadcast();
   final _volumeChangedController =
       StreamController<VolumeChangedEvent>.broadcast();
 
   Stream<AudioSessionInfo> get sessionAdded => _sessionAddedController.stream;
   Stream<AudioSessionInfo> get sessionRemoved =>
       _sessionRemovedController.stream;
+  Stream<AudioSessionInfo> get sessionUpdated =>
+      _sessionUpdatedController.stream;
   Stream<VolumeChangedEvent> get volumeChanged =>
       _volumeChangedController.stream;
 
@@ -35,6 +39,10 @@ class AudioServiceClient {
       // Event handlers
       _hubConnection.on('SessionAdded', (arguments) {
         _handleSessionAdded(arguments);
+      });
+
+      _hubConnection.on('SessionUpdated', (arguments) {
+        _handleSessionUpdated(arguments);
       });
 
       _hubConnection.on('SessionRemoved', (arguments) {
@@ -309,7 +317,21 @@ class AudioServiceClient {
     }
     await _sessionAddedController.close();
     await _sessionRemovedController.close();
+    await _sessionUpdatedController.close();
     await _volumeChangedController.close();
+  }
+
+  void _handleSessionUpdated(List<Object?>? arguments) {
+    if (arguments != null && arguments.isNotEmpty) {
+      try {
+        final data = arguments[0] as Map<String, dynamic>;
+        final session = AudioSessionInfo.fromJson(data['session']);
+        // Trigger an event that ApplicationManager can listen to
+        _sessionUpdatedController.add(session);
+      } catch (e) {
+        print('Error parsing SessionUpdated event: $e');
+      }
+    }
   }
 }
 

@@ -37,6 +37,7 @@ class ApplicationManager {
 
   StreamSubscription? _sessionAddedSubscription;
   StreamSubscription? _sessionRemovedSubscription;
+  StreamSubscription? _sessionUpdatedSubscription;
 
   Timer? _audioSessionMonitor;
   static const Duration _monitorInterval = Duration(seconds: 2);
@@ -61,6 +62,8 @@ class ApplicationManager {
         _serviceClient.sessionAdded.listen(_onSessionAdded);
     _sessionRemovedSubscription =
         _serviceClient.sessionRemoved.listen(_onSessionRemoved);
+    _sessionUpdatedSubscription =
+        _serviceClient.sessionUpdated.listen(_onSessionUpdated);
 
     _startAudioSessionMonitoring();
 
@@ -92,6 +95,9 @@ class ApplicationManager {
       _recentlyRestoredApps.removeWhere((sliderIndex, restorationTime) =>
           now.difference(restorationTime) > _restorationGracePeriod);
 
+      // Force refresh sessions from service
+      await _serviceClient.refreshSessions();
+
       if (missingApplications.isNotEmpty) {
         await _checkForMissingAudioSessions();
       }
@@ -114,14 +120,25 @@ class ApplicationManager {
         continue;
       }
 
+      // Only check by process name, not PID since PID changes on restart
       final stillActive = allSessions.any((session) =>
-          session.processId == app.processId &&
           _configManager.normalizeProcessName(session.processName) ==
-              _configManager.normalizeProcessName(app.processName));
+          _configManager.normalizeProcessName(app.processName));
 
       if (!stillActive) {
         print('App ${app.processName} session no longer active');
         potentiallyMissingApps.add(sliderIndex);
+      } else {
+        // Update the stored session with the new PID if it changed
+        final currentSession = allSessions.firstWhere((session) =>
+            _configManager.normalizeProcessName(session.processName) ==
+            _configManager.normalizeProcessName(app.processName));
+
+        if (currentSession.processId != app.processId) {
+          print(
+              'Updating PID for ${app.processName}: ${app.processId} -> ${currentSession.processId}');
+          assignedApplications[sliderIndex] = currentSession;
+        }
       }
     }
 
@@ -160,22 +177,19 @@ class ApplicationManager {
         final sliderIndex = entry.key;
         final missingApp = entry.value;
 
-        final matchingApp = runningApps.firstWhere(
-          (app) =>
-              _configManager.normalizeProcessName(app.processName) ==
-              _configManager.normalizeProcessName(missingApp.processName),
-          orElse: () => AudioSessionInfo(
-            processName: '',
-            processPath: '',
-            processId: 0,
-            volume: 0,
-            isMuted: false,
-          ),
-        );
+        // Find by process name only, not path or PID
+        final matchingApps = runningApps
+            .where((app) =>
+                _configManager.normalizeProcessName(app.processName) ==
+                _configManager.normalizeProcessName(missingApp.processName))
+            .toList();
 
-        if (matchingApp.processName.isNotEmpty) {
+        if (matchingApps.isNotEmpty) {
+          // Take the first matching app (or implement logic to choose the best match)
+          final matchingApp = matchingApps.first;
+
           print(
-              'Found missing app ${missingApp.processName} for slider $sliderIndex');
+              'Found missing app ${missingApp.processName} for slider $sliderIndex with new PID ${matchingApp.processId}');
 
           assignedApplications[sliderIndex] = matchingApp;
           _recentlyRestoredApps[sliderIndex] = DateTime.now();
@@ -194,10 +208,6 @@ class ApplicationManager {
       for (var sliderIndex in foundApps) {
         missingApplications.remove(sliderIndex);
         print('Removed slider $sliderIndex from missing applications list');
-      }
-
-      if (missingApplications.isEmpty && foundApps.isNotEmpty) {
-        print('All missing applications found and restored');
       }
     } catch (e) {
       print('Error checking for missing audio sessions: $e');
@@ -670,10 +680,40 @@ class ApplicationManager {
     print('All configurations cleared');
   }
 
+  void _onSessionUpdated(AudioSessionInfo session) {
+    // ADD THIS METHOD
+    print(
+        'Session updated: ${session.processName} with new PID: ${session.processId}');
+
+    // Find if this process is assigned to any slider
+    for (var entry in assignedApplications.entries) {
+      final sliderIndex = entry.key;
+      final app = entry.value;
+
+      if (_configManager.normalizeProcessName(app.processName) ==
+          _configManager.normalizeProcessName(session.processName)) {
+        // Update with new session info (new PID)
+        assignedApplications[sliderIndex] = session;
+        print(
+            'Updated slider $sliderIndex with new PID for ${session.processName}');
+
+        // Restore volume settings
+        _restoreVolumeForApp(
+          sliderIndex,
+          session,
+          sliderValues[sliderIndex],
+          muteStates[sliderIndex],
+        );
+        break;
+      }
+    }
+  }
+
   Future<void> dispose() async {
     _audioSessionMonitor?.cancel();
     await _sessionAddedSubscription?.cancel();
     await _sessionRemovedSubscription?.cancel();
+    await _sessionUpdatedSubscription?.cancel();
     await _configManager.saveAllSliderConfigs();
     await _serviceClient.dispose();
   }
