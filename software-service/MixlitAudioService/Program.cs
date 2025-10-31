@@ -33,6 +33,7 @@ builder.Services.AddSingleton<AudioControlService>();
 builder.Services.AddSingleton<ActiveWindowService>();
 builder.Services.AddSingleton<IconExtractionService>();
 builder.Services.AddHostedService<AudioSessionMonitor>();
+builder.Services.AddSingleton<ProcessDiscoveryService>();
 
 // Port
 builder.WebHost.ConfigureKestrel(options =>

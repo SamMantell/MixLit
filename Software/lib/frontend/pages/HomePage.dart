@@ -47,7 +47,7 @@ class _HomePageState extends State<HomePage>
   late final ApplicationManager _applicationManager;
   late final MuteButtonController _muteButtonController;
   late final VolumeController _volumeController;
-  late final ConnectionHandler _connectionHandler;
+  final ConnectionHandler _connectionHandler = ConnectionHandler();
   late final DeviceEventHandler _deviceEventHandler;
   StreamSubscription? _initialHardwareValuesSubscription;
 
@@ -114,8 +114,6 @@ class _HomePageState extends State<HomePage>
         _volumeController.updateMuteState(
             i, _muteButtonController.muteStates[i]);
       }
-
-      _connectionHandler = ConnectionHandler();
 
       _deviceEventHandler = DeviceEventHandler(
         worker: _worker,
@@ -370,11 +368,56 @@ class _HomePageState extends State<HomePage>
     }
   }
 
+  Future<void> _waitForInitialHardwareValues() async {
+    if (!_worker.isDeviceConnected) {
+      print('Device not connected, skipping hardware value wait');
+      return;
+    }
+
+    print('Waiting for initial hardware values...');
+
+    final completer = Completer<void>();
+
+    final timeout = Timer(const Duration(seconds: 8), () {
+      if (!completer.isCompleted) {
+        print('Timeout waiting for hardware values after 8 seconds');
+        completer.complete();
+      }
+    });
+
+    _initialHardwareValuesSubscription =
+        _worker.initialHardwareValues.listen((values) {
+      if (!completer.isCompleted) {
+        print('Received initial hardware values in HomePage: $values');
+        _restoreHardwareValues(values);
+        timeout.cancel();
+        completer.complete();
+      }
+    });
+
+    print('Requesting initial hardware values from device...');
+    final hardwareValues = await _worker.requestInitialHardwareValues();
+
+    if (hardwareValues != null && !completer.isCompleted) {
+      print('Got hardware values immediately: $hardwareValues');
+      _restoreHardwareValues(hardwareValues);
+      timeout.cancel();
+      completer.complete();
+    }
+
+    await completer.future;
+
+    await _initialHardwareValuesSubscription?.cancel();
+    _initialHardwareValuesSubscription = null;
+  }
+
   Future<void> _initializeConfiguration() async {
+    print('Starting configuration initialization...');
+
     await _applicationManager.configLoaded;
+    print('Application manager config loaded');
 
     setState(() {
-      // wait for hardware values
       _sliderTags =
           List.from(_applicationManager.sliderTags.take(_sliderTags.length));
 
@@ -392,18 +435,23 @@ class _HomePageState extends State<HomePage>
           _assignedApps[i] = null;
         }
       }
+
+      _configLoaded = true;
     });
 
+    print('Loading icons for assigned apps...');
     await _loadIconsForAssignedApps();
+    print('Icons loaded');
+
     if (_worker.isDeviceConnected) {
-      print('Requesting initial hardware values after configuration load...');
-      _worker.requestInitialHardwareValues().then((values) {
-        if (values != null && mounted) {
-          print('Received initial hardware values: $values');
-          _restoreHardwareValues(values);
-        }
-      });
+      print('Device is connected, waiting for hardware values...');
+      await _waitForInitialHardwareValues();
+      print('Hardware values restored');
+    } else {
+      print('Device not connected, skipping hardware value wait');
     }
+
+    print('Configuration initialization complete');
   }
 
   void _handleSliderData(Map<int, int> data) {
@@ -517,28 +565,42 @@ class _HomePageState extends State<HomePage>
   }
 
   void _restoreHardwareValues(Map<int, int> hardwareValues) {
-    if (!_configLoaded) return;
+    if (!_configLoaded) {
+      print('Config not loaded yet, storing hardware values for later');
+      return;
+    }
 
     print('Restoring hardware values from device: $hardwareValues');
 
     hardwareValues.forEach((sliderId, hardwareValue) {
       if (sliderId >= 0 && sliderId < _sliderValues.length) {
         final doubleValue = hardwareValue.toDouble();
+
+        print('Setting slider $sliderId to hardware value: $hardwareValue');
+
         _sliderValues[sliderId] = doubleValue;
 
         _muteButtonController.updatePreviousVolumeValue(sliderId, doubleValue);
 
         if (!_muteButtonController.muteStates[sliderId]) {
-          _volumeController.adjustVolume(sliderId, doubleValue);
+          _volumeController.adjustVolume(
+            sliderId,
+            doubleValue,
+            bypassRateLimit: true,
+            fromRestore: true,
+          );
         } else {
           _volumeController.storeVolumeValue(sliderId, doubleValue);
         }
 
-        print('Restored slider $sliderId to hardware value: $hardwareValue');
+        print(
+            'Successfully restored slider $sliderId to hardware value: $hardwareValue');
       }
     });
 
-    _uiUpdater.requestUpdate();
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   @override

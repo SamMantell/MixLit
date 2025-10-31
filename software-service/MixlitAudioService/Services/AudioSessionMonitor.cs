@@ -9,11 +9,11 @@ public class AudioSessionMonitor : BackgroundService
 {
     private readonly ILogger<AudioSessionMonitor> _logger;
     private readonly IServiceProvider _serviceProvider;
-    // Track both current and previously known sessions
     private readonly ConcurrentDictionary<string, List<AudioSessionInfo>> _currentSessions = new();
     private readonly ConcurrentDictionary<string, DateTime> _lastSeenProcesses = new();
     private MMDeviceEnumerator? _deviceEnumerator;
     private MMDevice? _defaultDevice;
+    private string? _currentDeviceId;
 
     public AudioSessionMonitor(
         ILogger<AudioSessionMonitor> logger,
@@ -31,11 +31,12 @@ public class AudioSessionMonitor : BackgroundService
         {
             _deviceEnumerator = new MMDeviceEnumerator();
             _defaultDevice = _deviceEnumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
+            _currentDeviceId = _defaultDevice?.ID;
 
             while (!stoppingToken.IsCancellationRequested)
             {
                 await MonitorSessionsAsync(stoppingToken);
-                await Task.Delay(TimeSpan.FromSeconds(1), stoppingToken); // Reduced to 1 second for faster detection
+                await Task.Delay(TimeSpan.FromMilliseconds(500), stoppingToken);
             }
         }
         catch (Exception ex)
@@ -57,10 +58,25 @@ public class AudioSessionMonitor : BackgroundService
             var audioService = scope.ServiceProvider.GetRequiredService<AudioControlService>();
             var hubContext = scope.ServiceProvider.GetRequiredService<IHubContext<AudioHub>>();
 
-            // Force cache refresh
-            audioService.InvalidateCache();
+            //check default device change
+            var newDefaultDevice = _deviceEnumerator?.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
+            if (newDefaultDevice?.ID != _currentDeviceId)
+            {
+                _logger.LogInformation("Audio device changed from {OldDevice} to {NewDevice}",
+                    _currentDeviceId, newDefaultDevice?.ID);
+                _currentDeviceId = newDefaultDevice?.ID;
+                _defaultDevice?.Dispose();
+                _defaultDevice = newDefaultDevice;
 
-            var currentSessions = await audioService.GetAllAudioSessionsAsync();
+                // Mark all current sessions as needing update check
+                foreach (var processName in _currentSessions.Keys.ToList())
+                {
+                    _lastSeenProcesses[processName] = DateTime.UtcNow;
+                }
+            }
+
+            audioService.InvalidateCache();
+            var currentSessions = await audioService.GetFreshAudioSessionsAsync();
             var currentProcessMap = new Dictionary<string, List<AudioSessionInfo>>();
 
             // Group current sessions by process name
@@ -80,27 +96,31 @@ public class AudioSessionMonitor : BackgroundService
                 var processName = kvp.Key;
                 var sessions = kvp.Value;
 
-                // Check if this is a known process that came back
                 bool wasRemoved = _lastSeenProcesses.ContainsKey(processName) &&
                                   !_currentSessions.ContainsKey(processName);
 
-                if (!_currentSessions.ContainsKey(processName) || wasRemoved)
+                bool hasNewPids = false;
+                if (_currentSessions.ContainsKey(processName))
                 {
-                    // New process or restored process
+                    var oldPids = _currentSessions[processName].Select(s => s.ProcessId).ToHashSet();
+                    var newPids = sessions.Select(s => s.ProcessId).ToHashSet();
+                    hasNewPids = !oldPids.SetEquals(newPids);
+                }
+
+                if (!_currentSessions.ContainsKey(processName) || wasRemoved || hasNewPids)
+                {
+                    string eventType = wasRemoved ? "RESTORED" : (hasNewPids ? "UPDATED" : "ADDED");
                     _currentSessions[processName] = sessions;
                     _lastSeenProcesses[processName] = DateTime.UtcNow;
-
-                    string eventType = wasRemoved ? "RESTORED" : "ADDED";
 
                     foreach (var session in sessions)
                     {
                         _logger.LogInformation("Audio session {EventType}: {ProcessName} (PID: {ProcessId})",
                             eventType, session.ProcessName, session.ProcessId);
 
-                        // Send appropriate event
-                        if (wasRemoved)
+                        // Send update for restored/changed sessions, add for new
+                        if (wasRemoved || hasNewPids)
                         {
-                            // Send update event for restored sessions
                             await hubContext.Clients.All.SendAsync("SessionUpdated", new SessionEvent
                             {
                                 EventType = "SESSION_UPDATED",
@@ -109,7 +129,6 @@ public class AudioSessionMonitor : BackgroundService
                         }
                         else
                         {
-                            // Send add event for new sessions
                             await hubContext.Clients.All.SendAsync("SessionAdded", new SessionEvent
                             {
                                 EventType = "SESSION_ADDED",
@@ -118,29 +137,7 @@ public class AudioSessionMonitor : BackgroundService
                         }
                     }
                 }
-                else
-                {
-                    // Check if PIDs changed for existing process
-                    var oldPids = _currentSessions[processName].Select(s => s.ProcessId).ToHashSet();
-                    var newPids = sessions.Select(s => s.ProcessId).ToHashSet();
 
-                    if (!oldPids.SetEquals(newPids))
-                    {
-                        _logger.LogInformation("Process {ProcessName} PIDs changed", processName);
-                        _currentSessions[processName] = sessions;
-
-                        foreach (var session in sessions)
-                        {
-                            await hubContext.Clients.All.SendAsync("SessionUpdated", new SessionEvent
-                            {
-                                EventType = "SESSION_UPDATED",
-                                Session = session
-                            }, cancellationToken);
-                        }
-                    }
-                }
-
-                // Update last seen time
                 _lastSeenProcesses[processName] = DateTime.UtcNow;
             }
 
@@ -153,7 +150,6 @@ public class AudioSessionMonitor : BackgroundService
             {
                 if (_currentSessions.TryRemove(processName, out var removedSessions))
                 {
-                    // Keep track that we've seen this process before
                     _lastSeenProcesses[processName] = DateTime.UtcNow;
 
                     foreach (var session in removedSessions)
@@ -170,8 +166,7 @@ public class AudioSessionMonitor : BackgroundService
                 }
             }
 
-            // Clean up old entries from _lastSeenProcesses (older than 5 minutes)
-            var cutoffTime = DateTime.UtcNow.AddMinutes(-5);
+            var cutoffTime = DateTime.UtcNow.AddMinutes(-2);
             var staleProcesses = _lastSeenProcesses
                 .Where(kvp => kvp.Value < cutoffTime && !_currentSessions.ContainsKey(kvp.Key))
                 .Select(kvp => kvp.Key)
@@ -180,6 +175,7 @@ public class AudioSessionMonitor : BackgroundService
             foreach (var processName in staleProcesses)
             {
                 _lastSeenProcesses.TryRemove(processName, out _);
+                _logger.LogDebug("Cleaned up stale process entry: {ProcessName}", processName);
             }
         }
         catch (Exception ex)

@@ -33,8 +33,7 @@ class SerialConnectionManager {
   static const Duration DATA_TIMEOUT = Duration(seconds: 30);
 
   bool _awaitingInitialValues = false;
-  final Completer<Map<int, int>?> _initialValuesCompleter =
-      Completer<Map<int, int>?>();
+  Completer<Map<int, int>?>? _initialValuesCompleter;
   Timer? _initialValuesTimeout;
 
   final StreamController<bool> _connectionStateController;
@@ -69,40 +68,29 @@ class SerialConnectionManager {
     });
   }
 
+  Map<int, int>? _capturedHardwareValues;
+
   Future<Map<int, int>?> getInitialHardwareValues() async {
     if (!_isConnected || _port == null) {
       print('Cannot get hardware values: not connected');
       return null;
     }
 
-    if (_awaitingInitialValues) {
-      print('Already waiting for initial values');
-      return await _initialValuesCompleter.future;
+    if (_capturedHardwareValues != null) {
+      print(
+          'Returning previously captured hardware values: $_capturedHardwareValues');
+      final values = _capturedHardwareValues;
+      _capturedHardwareValues = null;
+      return values;
     }
 
-    _awaitingInitialValues = true;
-    print('Requesting initial hardware values...');
-
-    try {
-      _port!.write(DEVICE_IDENTIFICATION_REQUEST);
-      _port!.flush();
-
-      _initialValuesTimeout = Timer(const Duration(seconds: 3), () {
-        if (!_initialValuesCompleter.isCompleted) {
-          print('Timeout waiting for initial hardware values');
-          _initialValuesCompleter.complete(null);
-        }
-        _awaitingInitialValues = false;
-      });
-
-      final result = await _initialValuesCompleter.future;
-      print('Received initial hardware values: $result');
-      return result;
-    } catch (e) {
-      print('Error getting initial hardware values: $e');
-      _awaitingInitialValues = false;
-      return null;
+    if (_awaitingInitialValues && _initialValuesCompleter != null) {
+      print('Already waiting for initial values, returning existing future');
+      return await _initialValuesCompleter!.future;
     }
+
+    print('Warning: No captured hardware values available');
+    return null;
   }
 
   void _startConnectionHealthCheck() {
@@ -318,7 +306,8 @@ class SerialConnectionManager {
     Timer? timeoutTimer;
     SerialPortReader? verificationReader;
     StreamSubscription? subscription;
-    bool receivedInitialData = false;
+    bool deviceIdentified = false;
+    Map<int, int>? pendingHardwareValues;
 
     try {
       print('Verifying device on port ${port.name}...');
@@ -334,31 +323,22 @@ class SerialConnectionManager {
             print('Received verification response: "$response"');
 
             // Check for device identifier
-            if (response.contains(DEVICE_IDENTIFIER) &&
-                !completer.isCompleted) {
+            if (response.contains(DEVICE_IDENTIFIER)) {
               print('Device identified as a MixLit - yippee!');
-              completer.complete(true);
-              return;
-            }
+              deviceIdentified = true;
 
-            // IMPORTANT: Capture initial data even if not explicitly awaiting
-            if (response.contains('|')) {
-              print('Received initial data during verification: $response');
+              //wait for hardware values
+            }
+            if (deviceIdentified && response.contains('|')) {
+              print('Received hardware values after identification: $response');
               final parsedData = _parseSliderData(response);
 
               if (parsedData.isNotEmpty) {
-                // Store hard-state of device potentiometers
-                if (onInitialHardwareValues != null) {
-                  print('Forwarding initial hardware values: $parsedData');
-                  onInitialHardwareValues!(parsedData);
-                }
+                print('Parsed hardware values: $parsedData');
+                pendingHardwareValues = parsedData;
 
-                // & complete the completer if waiting
-                if (_awaitingInitialValues &&
-                    !_initialValuesCompleter.isCompleted) {
-                  _initialValuesCompleter.complete(parsedData);
-                  _initialValuesTimeout?.cancel();
-                  _awaitingInitialValues = false;
+                if (!completer.isCompleted) {
+                  completer.complete(true);
                 }
               }
             }
@@ -373,21 +353,31 @@ class SerialConnectionManager {
         cancelOnError: false,
       );
 
+      //send verification request
       for (var i = 0; i < 3 && !completer.isCompleted; i++) {
         print('Sending verification request attempt ${i + 1}...');
         port.write(DEVICE_IDENTIFICATION_REQUEST);
         port.flush();
-        await Future.delayed(const Duration(milliseconds: 200));
+        await Future.delayed(const Duration(milliseconds: 500));
       }
 
-      timeoutTimer = Timer(const Duration(milliseconds: 2000), () {
+      timeoutTimer = Timer(const Duration(milliseconds: 3000), () {
         if (!completer.isCompleted) {
           print('Verification timed out');
-          completer.complete(false);
+          completer.complete(deviceIdentified);
         }
       });
 
       final result = await completer.future;
+      if (result && pendingHardwareValues != null) {
+        _capturedHardwareValues = pendingHardwareValues;
+        print('Stored captured hardware values: $_capturedHardwareValues');
+        if (onInitialHardwareValues != null) {
+          print('Forwarding captured hardware values to callback');
+          onInitialHardwareValues!(pendingHardwareValues!);
+        }
+      }
+
       print('Verification result: ${result ? "success" : "failed"}');
       return result;
     } catch (e) {
@@ -405,6 +395,7 @@ class SerialConnectionManager {
 
     try {
       final parts = data.split('|');
+      print('Parsing slider data parts: $parts');
 
       for (var i = 0; i < parts.length - 1; i += 2) {
         if (parts[i].isEmpty || parts[i + 1].isEmpty) continue;
@@ -413,10 +404,14 @@ class SerialConnectionManager {
           final sliderId = int.parse(parts[i].trim());
           final sliderValue = int.parse(parts[i + 1].trim());
 
-          if (sliderId >= 0 && sliderId <= 4) {
+          //accept all slider IDs 0-7 (5 sliders + 3 potentiometers)
+          //TODO: In future, update to allow dynamic slider counts
+          if (sliderId >= 0 && sliderId <= 7) {
             sliderData[sliderId] = sliderValue;
+            print('Parsed: slider $sliderId = $sliderValue');
           }
         } catch (e) {
+          print('Error parsing part $i: ${parts[i]}, ${parts[i + 1]} - $e');
           continue;
         }
       }
@@ -424,6 +419,7 @@ class SerialConnectionManager {
       print('Error parsing slider data: $e');
     }
 
+    print('Final parsed slider data: $sliderData');
     return sliderData;
   }
 
@@ -444,22 +440,26 @@ class SerialConnectionManager {
           _lastDataReceived = DateTime.now();
           _connectionHealthCheckFailures = 0;
 
-          if (_awaitingInitialValues) {
-            final response = String.fromCharCodes(data).trim();
-            if (response.contains('|')) {
-              final parsedData = _parseSliderData(response);
-              if (parsedData.isNotEmpty &&
-                  !_initialValuesCompleter.isCompleted) {
-                print('Received initial hardware values: $parsedData');
-                _initialValuesCompleter.complete(parsedData);
+          final response = String.fromCharCodes(data).trim();
+
+          if (_awaitingInitialValues && response.contains('|')) {
+            final parsedData = _parseSliderData(response);
+
+            if (parsedData.isNotEmpty) {
+              print('Received initial hardware values in reader: $parsedData');
+              if (_initialValuesCompleter != null &&
+                  !_initialValuesCompleter!.isCompleted) {
+                print('Completing completer with: $parsedData');
+                _initialValuesCompleter!.complete(parsedData);
                 _initialValuesTimeout?.cancel();
                 _awaitingInitialValues = false;
-
-                if (onInitialHardwareValues != null) {
-                  onInitialHardwareValues!(parsedData);
-                }
-                return;
               }
+
+              if (onInitialHardwareValues != null) {
+                print('Forwarding to callback: $parsedData');
+                onInitialHardwareValues!(parsedData);
+              }
+              return;
             }
           }
 
@@ -491,10 +491,15 @@ class SerialConnectionManager {
     _connectionHealthCheckTimer?.cancel();
     _initialValuesTimeout?.cancel();
 
-    if (_awaitingInitialValues && !_initialValuesCompleter.isCompleted) {
-      _initialValuesCompleter.complete(null);
-      _awaitingInitialValues = false;
+    _capturedHardwareValues = null;
+
+    if (_awaitingInitialValues &&
+        _initialValuesCompleter != null &&
+        !_initialValuesCompleter!.isCompleted) {
+      _initialValuesCompleter!.complete(null);
     }
+    _awaitingInitialValues = false;
+    _initialValuesCompleter = null;
 
     try {
       if (_readerSubscription != null) {
@@ -539,8 +544,10 @@ class SerialConnectionManager {
     _connectionHealthCheckTimer?.cancel();
     _initialValuesTimeout?.cancel();
 
-    if (_awaitingInitialValues && !_initialValuesCompleter.isCompleted) {
-      _initialValuesCompleter.complete(null);
+    if (_awaitingInitialValues &&
+        _initialValuesCompleter != null &&
+        !_initialValuesCompleter!.isCompleted) {
+      _initialValuesCompleter!.complete(null);
     }
 
     await _handleDisconnection();
@@ -645,9 +652,16 @@ class SerialConnectionManager {
       _lastKnownPort = port.name;
       await _configManager.saveLastComPort(_lastKnownPort!);
 
-      Future.delayed(const Duration(milliseconds: 500), () {
-        getInitialHardwareValues();
-      });
+      print('Retrieving captured hardware values...');
+      await Future.delayed(const Duration(milliseconds: 100));
+      final capturedValues = await getInitialHardwareValues();
+
+      if (capturedValues != null) {
+        print(
+            'Successfully retrieved captured hardware values: $capturedValues');
+      } else {
+        print('No hardware values were captured during verification');
+      }
     } catch (e) {
       print('Error establishing connection: $e');
       _isConnected = false;

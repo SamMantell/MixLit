@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:mixlit/backend/application/audio/ApplicationManager.dart';
 import 'package:mixlit/backend/application/audio/audio_service_client.dart';
+import 'package:mixlit/backend/application/data/ConfigManager.dart';
 
 class VolumeController {
   final ApplicationManager applicationManager;
@@ -56,6 +57,15 @@ class VolumeController {
         applicationManager.sliderValues[sliderId];
   }
 
+  bool _shouldBypassRateLimit(int sliderId, double value) {
+    final tag = sliderTags[sliderId];
+    if (tag == ConfigManager.TAG_DEFAULT_DEVICE ||
+        tag == ConfigManager.TAG_MASTER_VOLUME) {
+      return true;
+    }
+    return value <= muteVolume;
+  }
+
   void adjustVolume(int sliderId, double value,
       {bool bypassRateLimit = false, bool fromRestore = false}) {
     applicationManager.sliderValues[sliderId] = value;
@@ -65,7 +75,10 @@ class VolumeController {
       return;
     }
 
-    if (value <= muteVolume || bypassRateLimit) {
+    final shouldBypass =
+        bypassRateLimit || _shouldBypassRateLimit(sliderId, value);
+
+    if (shouldBypass) {
       directVolumeAdjustment(sliderId, value, fromRestore: fromRestore);
       return;
     }
@@ -112,8 +125,6 @@ class VolumeController {
     applicationManager.sliderValues[sliderId] = value;
 
     // All volume adjustments now go through ApplicationManager
-    // which uses the audio service client
-    //TODO: Remove ALL instances of win32audio API
     await applicationManager.adjustVolume(sliderId, value);
 
     bool isMuted =

@@ -10,15 +10,18 @@ public class SessionController : ControllerBase
 {
     private readonly AudioControlService _audioService;
     private readonly IconExtractionService _iconService;
+    private readonly ProcessDiscoveryService _processDiscovery;
     private readonly ILogger<SessionController> _logger;
 
     public SessionController(
         AudioControlService audioService,
         IconExtractionService iconService,
+        ProcessDiscoveryService processDiscovery,
         ILogger<SessionController> logger)
     {
         _audioService = audioService;
         _iconService = iconService;
+        _processDiscovery = processDiscovery;
         _logger = logger;
     }
 
@@ -27,7 +30,16 @@ public class SessionController : ControllerBase
     {
         try
         {
-            var sessions = await _audioService.GetAllAudioSessionsAsync();
+            var applications = _processDiscovery.GetRunningApplications();
+
+            var sessions = applications.Select(app => new AudioSessionInfo
+            {
+                ProcessName = app.ProcessName,
+                ProcessPath = app.ProcessPath,
+                ProcessId = app.ProcessId,
+                Volume = 1.0f,
+                IsMuted = false
+            }).ToList();
 
             if (includeIcons)
             {
@@ -38,7 +50,6 @@ public class SessionController : ControllerBase
                         session.IconBase64 = await _iconService.GetIconBase64Async(session.ProcessPath);
                     }
                 });
-
                 await Task.WhenAll(tasks);
             }
 
@@ -46,7 +57,7 @@ public class SessionController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting audio sessions");
+            _logger.LogError(ex, "Error getting applications");
             return StatusCode(500, ApiResponse<List<AudioSessionInfo>>.Fail(ex.Message));
         }
     }

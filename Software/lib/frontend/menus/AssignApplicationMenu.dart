@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui';
@@ -65,6 +66,468 @@ class AppGroup {
   }
 }
 
+class _AppSelectorDialog extends StatefulWidget {
+  final int sliderIndex;
+  final ApplicationManager applicationManager;
+  final List<AudioSessionInfo> initialRunningApps;
+  final Map<String, Uint8List?> appIcons;
+  final List<AudioSessionInfo?> assignedApps;
+
+  const _AppSelectorDialog({
+    required this.sliderIndex,
+    required this.applicationManager,
+    required this.initialRunningApps,
+    required this.appIcons,
+    required this.assignedApps,
+  });
+
+  @override
+  State<_AppSelectorDialog> createState() => _AppSelectorDialogState();
+}
+
+class _AppSelectorDialogState extends State<_AppSelectorDialog> {
+  late List<AudioSessionInfo> _runningApps;
+  bool _isRefreshing = false;
+  Timer? _refreshTimer;
+  final Map<String, bool> _removingApps = {};
+  final Map<String, bool> _newApps = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _runningApps = widget.initialRunningApps;
+    _startAutoRefresh();
+  }
+
+  void _startAutoRefresh() {
+    Future.delayed(const Duration(milliseconds: 300), _refreshApps);
+
+    _refreshTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+      _refreshApps();
+    });
+  }
+
+  Future<void> _refreshApps() async {
+    if (_isRefreshing || !mounted) return;
+
+    setState(() {
+      _isRefreshing = true;
+    });
+
+    try {
+      final configManager = ConfigManager.instance;
+      final oldAppNames = _runningApps
+          .map((app) => configManager.normalizeProcessName(app.processName))
+          .toSet();
+
+      await widget.applicationManager.audioServiceClient.refreshSessions();
+      await Future.delayed(const Duration(milliseconds: 200));
+
+      final freshApps =
+          await widget.applicationManager.getRunningApplicationsWithAudio();
+      await fetchAllAppIcons(
+        freshApps,
+        widget.appIcons,
+        audioServiceClient: widget.applicationManager.audioServiceClient,
+      );
+
+      if (mounted) {
+        final newAppNames = freshApps
+            .map((app) => configManager.normalizeProcessName(app.processName))
+            .toSet();
+
+        final addedApps = newAppNames.difference(oldAppNames);
+        final removedApps = oldAppNames.difference(newAppNames);
+
+        for (var appName in removedApps) {
+          _removingApps[appName] = true;
+        }
+
+        for (var appName in addedApps) {
+          _newApps[appName] = true;
+        }
+
+        if (removedApps.isNotEmpty) {
+          setState(() {});
+          await Future.delayed(const Duration(milliseconds: 300));
+        }
+
+        setState(() {
+          _runningApps = freshApps;
+          _removingApps.clear();
+        });
+
+        Future.delayed(const Duration(milliseconds: 400), () {
+          if (mounted) {
+            setState(() {
+              _newApps.clear();
+            });
+          }
+        });
+      }
+    } catch (e) {
+      print('Error refreshing apps: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isRefreshing = false;
+        });
+      }
+    }
+  }
+
+  List<AudioSessionInfo> get _availableApps {
+    return _runningApps.where((app) {
+      final hasIcon = widget.appIcons[app.processPath] != null;
+      final hasValidName = app.processName.isNotEmpty &&
+          app.processName.toLowerCase() != 'unknown' &&
+          app.processPath.isNotEmpty;
+
+      if (!hasIcon && !hasValidName) {
+        return false;
+      }
+
+      for (var i = 0; i < widget.assignedApps.length; i++) {
+        if (i != widget.sliderIndex && widget.assignedApps[i] != null) {
+          final assignedApp = widget.assignedApps[i]!;
+          final configManager = ConfigManager.instance;
+
+          if (configManager.normalizeProcessName(
+                  configManager.extractProcessName(assignedApp.processPath)) ==
+              configManager.normalizeProcessName(
+                  configManager.extractProcessName(app.processPath))) {
+            return false;
+          }
+        }
+      }
+      return true;
+    }).toList();
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bool isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    const String noiseTextureBase64 =
+        'PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8ZGVmcz4KICAgIDxmaWx0ZXIgaWQ9Im5vaXNlIj4KICAgICAgPGZlVHVyYnVsZW5jZSBiYXNlRnJlcXVlbmN5PSIwLjkiIG51bU9jdGF2ZXM9IjQiIHNlZWQ9IjIiLz4KICAgICAgPGZlQ29sb3JNYXRyaXggdHlwZT0ic2F0dXJhdGUiIHZhbHVlcz0iMCIvPgogICAgPC9maWx0ZXI+CiAgPC9kZWZzPgogIDxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbHRlcj0idXJsKCNub2lzZSkiIG9wYWNpdHk9IjAuMDUiLz4KPC9zdmc+';
+    final Uint8List noiseTextureBytes = base64Decode(noiseTextureBase64);
+
+    return BackdropFilter(
+      filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+      child: Stack(
+        children: [
+          DefaultTabController(
+            length: 3,
+            child: Dialog(
+              backgroundColor: Colors.transparent,
+              child: Container(
+                width: MediaQuery.of(context).size.width * 0.6,
+                height: MediaQuery.of(context).size.height * 0.7,
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  image: DecorationImage(
+                    image: MemoryImage(noiseTextureBytes),
+                    repeat: ImageRepeat.repeat,
+                    opacity: 0.05,
+                  ),
+                  color: isDarkMode
+                      ? const Color(0xFF1E1E1E)
+                      : const Color.fromARGB(255, 214, 214, 214),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: isDarkMode
+                        ? Colors.white.withOpacity(0.1)
+                        : Colors.black.withOpacity(0.1),
+                    width: 1,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.3),
+                      blurRadius: 20,
+                      spreadRadius: 5,
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Row(
+                      children: [
+                        Expanded(
+                          child: TabBar(
+                            tabs: [
+                              Tab(
+                                child: Text(
+                                  'Applications',
+                                  style: TextStyle(
+                                    fontFamily: 'BitstreamVeraSans',
+                                  ),
+                                ),
+                              ),
+                              Tab(
+                                child: Text(
+                                  'Groups',
+                                  style: TextStyle(
+                                    fontFamily: 'BitstreamVeraSans',
+                                  ),
+                                ),
+                              ),
+                              Tab(
+                                child: Text(
+                                  'System',
+                                  style: TextStyle(
+                                    fontFamily: 'BitstreamVeraSans',
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    Expanded(
+                      child: TabBarView(
+                        children: [
+                          _buildApplicationsList(),
+                          GroupsTabContent(
+                            availableApps: _availableApps,
+                            appIcons: widget.appIcons,
+                            isDarkMode: isDarkMode,
+                          ),
+                          _buildSystemTab(),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          // Close button
+          Positioned(
+            top: MediaQuery.of(context).size.height * 0.5 -
+                (MediaQuery.of(context).size.height * 0.48) +
+                90,
+            right: MediaQuery.of(context).size.width * 0.2 - 12,
+            child: Transform.rotate(
+              angle: 8 * (3.14159 / 180),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: () => Navigator.pop(context),
+                  borderRadius: BorderRadius.circular(20),
+                  child: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF3F1E5).withOpacity(0.9),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: const Color(0xFFF3F1E5).withOpacity(0.5),
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.2),
+                          blurRadius: 4,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: const Icon(
+                      Icons.close,
+                      color: Color(0xFF333333),
+                      size: 30,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildApplicationsList() {
+    final availableApps = _availableApps;
+
+    if (_isRefreshing && availableApps.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const CircularProgressIndicator(),
+            const SizedBox(height: 16),
+            Text(
+              'Searching for applications...',
+              style: TextStyle(
+                fontFamily: 'BitstreamVeraSans',
+                color: Colors.white.withOpacity(0.7),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (availableApps.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.apps_outlined,
+              size: 64,
+              color: Colors.white.withOpacity(0.3),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'No applications found',
+              style: TextStyle(
+                fontFamily: 'BitstreamVeraSans',
+                color: Colors.white.withOpacity(0.6),
+                fontSize: 16,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Applications will appear here automatically',
+              style: TextStyle(
+                fontFamily: 'BitstreamVeraSans',
+                color: Colors.white.withOpacity(0.4),
+                fontSize: 12,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return ListView.builder(
+      itemCount: availableApps.length,
+      itemBuilder: (context, index) {
+        final app = availableApps[index];
+        final iconData = widget.appIcons[app.processPath];
+        final appName = _formatAppName(app.processPath.split(r'\').last);
+        final configManager = ConfigManager.instance;
+        final normalizedName =
+            configManager.normalizeProcessName(app.processName);
+        final isNewApp = _newApps.containsKey(normalizedName);
+        final isRemoving = _removingApps.containsKey(normalizedName);
+
+        return AnimatedSlide(
+          duration: const Duration(milliseconds: 300),
+          offset: isRemoving
+              ? const Offset(1.0, 0)
+              : (isNewApp ? Offset.zero : Offset.zero),
+          curve: Curves.easeInOut,
+          child: AnimatedOpacity(
+            duration: Duration(milliseconds: isRemoving ? 200 : 400),
+            opacity: isRemoving ? 0.0 : 1.0,
+            curve: Curves.easeOut,
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 400),
+              transform: Matrix4.translationValues(
+                0,
+                isNewApp ? 0 : 0,
+                0,
+              ),
+              child: ListTile(
+                leading: iconData != null
+                    ? Image.memory(
+                        iconData,
+                        width: 32,
+                        height: 32,
+                        errorBuilder: (context, error, stack) =>
+                            const Icon(Icons.apps, color: Colors.white),
+                      )
+                    : const Icon(Icons.apps, color: Colors.white),
+                title: Text(
+                  appName,
+                  style: const TextStyle(
+                    fontFamily: 'BitstreamVeraSans',
+                    color: Colors.white,
+                  ),
+                ),
+                onTap: isRemoving
+                    ? null
+                    : () {
+                        Navigator.pop(context, {'type': 'app', 'app': app});
+                      },
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildSystemTab() {
+    return ListView(
+      children: [
+        ListTile(
+          leading: const Icon(Icons.speaker, color: Colors.white),
+          title: const Text(
+            'Device Volume',
+            style: TextStyle(
+              fontFamily: 'BitstreamVeraSans',
+              color: Colors.white,
+            ),
+          ),
+          onTap: () {
+            Navigator.pop(context, {'type': 'device'});
+          },
+        ),
+        ListTile(
+          leading: const Icon(Icons.volume_up, color: Colors.white),
+          title: const Text(
+            'Master Volume',
+            style: TextStyle(
+              fontFamily: 'BitstreamVeraSans',
+              color: Colors.white,
+            ),
+          ),
+          onTap: () {
+            Navigator.pop(context, {'type': 'master'});
+          },
+        ),
+        ListTile(
+          leading: const Icon(Icons.app_registration, color: Colors.white),
+          title: const Text(
+            'Active Application Volume',
+            style: TextStyle(
+              fontFamily: 'BitstreamVeraSans',
+              color: Colors.white,
+            ),
+          ),
+          onTap: () {
+            Navigator.pop(context, {'type': 'active'});
+          },
+        ),
+        const Divider(color: Colors.white30),
+        ListTile(
+          leading: const Icon(Icons.delete_outline, color: Colors.red),
+          title: const Text(
+            'Reset Slider',
+            style: TextStyle(
+              fontFamily: 'BitstreamVeraSans',
+              color: Colors.red,
+            ),
+          ),
+          onTap: () {
+            Navigator.pop(context, {'type': 'reset'});
+          },
+        ),
+      ],
+    );
+  }
+}
+
 Future<List<AudioSessionInfo?>> assignApplication(
   BuildContext context,
   int sliderIndex,
@@ -74,8 +537,7 @@ Future<List<AudioSessionInfo?>> assignApplication(
   List<double> sliderValues,
   List<String> sliderTags,
 ) async {
-  final runningApps =
-      await applicationManager.getRunningApplicationsWithAudio();
+  var runningApps = await applicationManager.getRunningApplicationsWithAudio();
   await fetchAllAppIcons(
     runningApps,
     appIcons,
@@ -85,265 +547,16 @@ Future<List<AudioSessionInfo?>> assignApplication(
   final previousTag = sliderTags[sliderIndex];
   final previousApp = assignedApps[sliderIndex];
 
-  final availableApps = runningApps.where((app) {
-    final hasIcon = appIcons[app.processPath] != null;
-    final hasValidName = app.processName.isNotEmpty &&
-        app.processName.toLowerCase() != 'unknown' &&
-        app.processPath.isNotEmpty;
-
-    if (!hasIcon && !hasValidName) {
-      return false;
-    }
-
-    for (var i = 0; i < assignedApps.length; i++) {
-      if (i != sliderIndex && assignedApps[i] != null) {
-        final assignedApp = assignedApps[i]!;
-        final configManager = ConfigManager.instance;
-
-        if (configManager.normalizeProcessName(
-                configManager.extractProcessName(assignedApp.processPath)) ==
-            configManager.normalizeProcessName(
-                configManager.extractProcessName(app.processPath))) {
-          return false;
-        }
-      }
-    }
-    return true;
-  }).toList();
-
-  const String noiseTextureBase64 =
-      'PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8ZGVmcz4KICAgIDxmaWx0ZXIgaWQ9Im5vaXNlIj4KICAgICAgPGZlVHVyYnVsZW5jZSBiYXNlRnJlcXVlbmN5PSIwLjkiIG51bU9jdGF2ZXM9IjQiIHNlZWQ9IjIiLz4KICAgICAgPGZlQ29sb3JNYXRyaXggdHlwZT0ic2F0dXJhdGUiIHZhbHVlcz0iMCIvPgogICAgPC9maWx0ZXI+CiAgPC9kZWZzPgogIDxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbHRlcj0idXJsKCNub2lzZSkiIG9wYWNpdHk9IjAuMDUiLz4KPC9zdmc+';
-  final Uint8List noiseTextureBytes = base64Decode(noiseTextureBase64);
-
   dynamic result = await showDialog(
     context: context,
     barrierDismissible: true,
     builder: (BuildContext context) {
-      final bool isDarkMode = Theme.of(context).brightness == Brightness.dark;
-
-      return BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-        child: Stack(
-          children: [
-            DefaultTabController(
-              length: 3,
-              child: Dialog(
-                backgroundColor: Colors.transparent,
-                child: Container(
-                  width: MediaQuery.of(context).size.width * 0.6,
-                  height: MediaQuery.of(context).size.height * 0.7,
-                  padding: const EdgeInsets.all(24),
-                  decoration: BoxDecoration(
-                    image: DecorationImage(
-                      image: MemoryImage(noiseTextureBytes),
-                      repeat: ImageRepeat.repeat,
-                      opacity: 0.05,
-                    ),
-                    color: isDarkMode
-                        ? const Color(0xFF1E1E1E)
-                        : const Color.fromARGB(255, 214, 214, 214),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: isDarkMode
-                          ? Colors.white.withOpacity(0.1)
-                          : Colors.black.withOpacity(0.1),
-                      width: 1,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.3),
-                        blurRadius: 20,
-                        spreadRadius: 5,
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const TabBar(
-                        tabs: [
-                          Tab(
-                            child: Text(
-                              'Applications',
-                              style: TextStyle(
-                                fontFamily: 'BitstreamVeraSans',
-                              ),
-                            ),
-                          ),
-                          Tab(
-                            child: Text(
-                              'Groups',
-                              style: TextStyle(
-                                fontFamily: 'BitstreamVeraSans',
-                              ),
-                            ),
-                          ),
-                          Tab(
-                            child: Text(
-                              'System',
-                              style: TextStyle(
-                                fontFamily: 'BitstreamVeraSans',
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      Expanded(
-                        child: TabBarView(
-                          children: [
-                            // Applications Tab
-                            ListView.builder(
-                              itemCount: availableApps.length,
-                              itemBuilder: (context, index) {
-                                final app = availableApps[index];
-                                final iconData = appIcons[app.processPath];
-                                final appName = _formatAppName(
-                                    app.processPath.split(r'\').last);
-
-                                return ListTile(
-                                  leading: iconData != null
-                                      ? Image.memory(
-                                          iconData,
-                                          width: 32,
-                                          height: 32,
-                                          errorBuilder:
-                                              (context, error, stack) =>
-                                                  const Icon(Icons.apps,
-                                                      color: Colors.white),
-                                        )
-                                      : const Icon(Icons.apps,
-                                          color: Colors.white),
-                                  title: Text(
-                                    appName,
-                                    style: const TextStyle(
-                                      fontFamily: 'BitstreamVeraSans',
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                  onTap: () {
-                                    Navigator.pop(
-                                        context, {'type': 'app', 'app': app});
-                                  },
-                                );
-                              },
-                            ),
-                            // Groups Tab
-                            GroupsTabContent(
-                              availableApps: availableApps,
-                              appIcons: appIcons,
-                              isDarkMode: isDarkMode,
-                            ),
-                            // System Tab
-                            ListView(
-                              children: [
-                                ListTile(
-                                  leading: const Icon(Icons.speaker,
-                                      color: Colors.white),
-                                  title: const Text(
-                                    'Device Volume',
-                                    style: TextStyle(
-                                      fontFamily: 'BitstreamVeraSans',
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                  onTap: () {
-                                    Navigator.pop(context, {'type': 'device'});
-                                  },
-                                ),
-                                ListTile(
-                                  leading: const Icon(Icons.volume_up,
-                                      color: Colors.white),
-                                  title: const Text(
-                                    'Master Volume',
-                                    style: TextStyle(
-                                      fontFamily: 'BitstreamVeraSans',
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                  onTap: () {
-                                    Navigator.pop(context, {'type': 'master'});
-                                  },
-                                ),
-                                ListTile(
-                                  leading: const Icon(Icons.app_registration,
-                                      color: Colors.white),
-                                  title: const Text(
-                                    'Active Application Volume',
-                                    style: TextStyle(
-                                      fontFamily: 'BitstreamVeraSans',
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                  onTap: () {
-                                    Navigator.pop(context, {'type': 'active'});
-                                  },
-                                ),
-                                const Divider(color: Colors.white30),
-                                ListTile(
-                                  leading: const Icon(Icons.delete_outline,
-                                      color: Colors.red),
-                                  title: const Text(
-                                    'Reset Slider',
-                                    style: TextStyle(
-                                      fontFamily: 'BitstreamVeraSans',
-                                      color: Colors.red,
-                                    ),
-                                  ),
-                                  onTap: () {
-                                    Navigator.pop(context, {'type': 'reset'});
-                                  },
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            Positioned(
-              top: MediaQuery.of(context).size.height * 0.5 -
-                  (MediaQuery.of(context).size.height * 0.48) +
-                  90,
-              right: MediaQuery.of(context).size.width * 0.2 - 12,
-              child: Transform.rotate(
-                angle: 8 * (3.14159 / 180),
-                child: Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    onTap: () => Navigator.pop(context),
-                    borderRadius: BorderRadius.circular(20),
-                    child: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF3F1E5).withOpacity(0.9),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: const Color(0xFFF3F1E5).withOpacity(0.5),
-                        ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.2),
-                            blurRadius: 4,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: const Icon(
-                        Icons.close,
-                        color: Color(0xFF333333),
-                        size: 30,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
+      return _AppSelectorDialog(
+        sliderIndex: sliderIndex,
+        applicationManager: applicationManager,
+        initialRunningApps: runningApps,
+        appIcons: appIcons,
+        assignedApps: assignedApps,
       );
     },
   );

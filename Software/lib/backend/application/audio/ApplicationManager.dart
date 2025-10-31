@@ -82,6 +82,49 @@ class ApplicationManager {
     _validateAssignedApplications();
   }
 
+  void _onSessionUpdated(AudioSessionInfo session) {
+    print(
+        'Session updated: ${session.processName} with new PID: ${session.processId}');
+
+    //if process is assigned to slider
+    for (var entry in assignedApplications.entries) {
+      final sliderIndex = entry.key;
+      final app = entry.value;
+
+      if (_configManager.normalizeProcessName(app.processName) ==
+          _configManager.normalizeProcessName(session.processName)) {
+        assignedApplications[sliderIndex] = session;
+        print(
+            'Updated slider $sliderIndex with new PID for ${session.processName}');
+        _reapplyCurrentVolume(sliderIndex, session);
+        break;
+      }
+    }
+  }
+
+  Future<void> _reapplyCurrentVolume(
+      int sliderIndex, AudioSessionInfo session) async {
+    try {
+      final currentVolume = sliderValues[sliderIndex];
+      final currentMuteState = muteStates[sliderIndex];
+
+      print(
+          'Reapplying volume for slider $sliderIndex: volume=$currentVolume, muted=$currentMuteState');
+
+      await Future.delayed(const Duration(milliseconds: 150));
+
+      if (currentMuteState) {
+        await setMuteState(sliderIndex, true);
+      } else {
+        await adjustVolume(sliderIndex, currentVolume);
+      }
+
+      print('Volume reapplied successfully for slider $sliderIndex');
+    } catch (e) {
+      print('Error reapplying volume for slider $sliderIndex: $e');
+    }
+  }
+
   void _startAudioSessionMonitoring() {
     _audioSessionMonitor = Timer.periodic(_monitorInterval, (timer) async {
       await _monitorAudioSessions();
@@ -197,8 +240,8 @@ class ApplicationManager {
           await _restoreVolumeForApp(
             sliderIndex,
             matchingApp,
-            missingApp.volumeValue,
-            missingApp.isMuted,
+            sliderValues[sliderIndex],
+            muteStates[sliderIndex],
           );
 
           foundApps.add(sliderIndex);
@@ -221,7 +264,8 @@ class ApplicationManager {
     bool isMuted,
   ) async {
     try {
-      print('Restoring volume for slider $sliderIndex: ${app.processPath}');
+      print(
+          'Restoring volume for slider $sliderIndex: ${app.processPath} to $volumeValue (muted: $isMuted)');
 
       sliderValues[sliderIndex] = volumeValue;
       muteStates[sliderIndex] = isMuted;
@@ -231,7 +275,6 @@ class ApplicationManager {
       if (isMuted) {
         await setMuteState(sliderIndex, true);
       } else {
-        // Restore volume
         await adjustVolume(sliderIndex, volumeValue);
       }
 
@@ -678,35 +721,6 @@ class ApplicationManager {
       ..removeData('appGroups');
 
     print('All configurations cleared');
-  }
-
-  void _onSessionUpdated(AudioSessionInfo session) {
-    // ADD THIS METHOD
-    print(
-        'Session updated: ${session.processName} with new PID: ${session.processId}');
-
-    // Find if this process is assigned to any slider
-    for (var entry in assignedApplications.entries) {
-      final sliderIndex = entry.key;
-      final app = entry.value;
-
-      if (_configManager.normalizeProcessName(app.processName) ==
-          _configManager.normalizeProcessName(session.processName)) {
-        // Update with new session info (new PID)
-        assignedApplications[sliderIndex] = session;
-        print(
-            'Updated slider $sliderIndex with new PID for ${session.processName}');
-
-        // Restore volume settings
-        _restoreVolumeForApp(
-          sliderIndex,
-          session,
-          sliderValues[sliderIndex],
-          muteStates[sliderIndex],
-        );
-        break;
-      }
-    }
   }
 
   Future<void> dispose() async {
