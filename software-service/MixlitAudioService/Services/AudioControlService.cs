@@ -3,6 +3,7 @@ using NAudio.CoreAudioApi;
 using NAudio.CoreAudioApi.Interfaces;
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 
 namespace MixlitAudioService.Services;
 
@@ -14,6 +15,9 @@ public class AudioControlService : IDisposable, IMMNotificationClient
     // Track the latest pending volume for each process
     private readonly ConcurrentDictionary<string, float?> _pendingVolumes = new();
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _processLocks = new();
+    // Caching
+    private readonly ConcurrentDictionary<string, (List<AudioSessionControl> Sessions, DateTime LastFetch)> _sessionCache = new();
+    private readonly TimeSpan _sessionCacheLifetime = TimeSpan.FromSeconds(2);
 
     private readonly ILogger<AudioControlService> _logger;
     private readonly ActiveWindowService _activeWindowService;
@@ -78,27 +82,30 @@ public class AudioControlService : IDisposable, IMMNotificationClient
     {
         var normalizedName = NormalizeProcessName(processName);
         var sessions = new List<AudioSessionControl>();
-
-        var device = GetFreshDevice();
-        if (device == null)
-        {
-            _logger.LogWarning("Could not get default audio device");
-            return sessions;
-        }
+        MMDevice? device = null;
+        SessionCollection? allSessions = null;
 
         try
         {
+            device = GetFreshDevice();
+            if (device == null)
+            {
+                _logger.LogWarning("Could not get default audio device");
+                return sessions;
+            }
+
             var sessionManager = device.AudioSessionManager;
-            var allSessions = sessionManager.Sessions;
+            allSessions = sessionManager.Sessions;
 
             _logger.LogDebug("Scanning {Count} total audio sessions for {ProcessName}",
                 allSessions.Count, processName);
 
             for (int i = 0; i < allSessions.Count; i++)
             {
+                AudioSessionControl? session = null;
                 try
                 {
-                    var session = allSessions[i];
+                    session = allSessions[i];
                     var processId = session.GetProcessID;
 
                     if (processId == 0) continue;
@@ -111,11 +118,19 @@ public class AudioControlService : IDisposable, IMMNotificationClient
                     if (sessionNormalizedName == normalizedName)
                     {
                         sessions.Add(session);
+                        session = null;
                     }
                 }
                 catch (Exception ex)
                 {
                     _logger.LogDebug("Error checking session {Index}: {Error}", i, ex.Message);
+                }
+                finally
+                {
+                    if (session != null && Marshal.IsComObject(session))
+                    {
+                        Marshal.ReleaseComObject(session);
+                    }
                 }
             }
         }
@@ -125,6 +140,10 @@ public class AudioControlService : IDisposable, IMMNotificationClient
         }
         finally
         {
+            if (allSessions != null && Marshal.IsComObject(allSessions))
+            {
+                Marshal.ReleaseComObject(allSessions);
+            }
             device?.Dispose();
         }
 
@@ -134,19 +153,23 @@ public class AudioControlService : IDisposable, IMMNotificationClient
     public async Task<List<AudioSessionInfo>> GetAllAudioSessionsAsync()
     {
         var sessions = new List<AudioSessionInfo>();
-        var device = GetFreshDevice();
-        if (device == null) return sessions;
+        MMDevice? device = null;
+        SessionCollection? allSessions = null;
 
         try
         {
+            device = GetFreshDevice();
+            if (device == null) return sessions;
+
             var sessionManager = device.AudioSessionManager;
-            var allSessions = sessionManager.Sessions;
+            allSessions = sessionManager.Sessions;
 
             for (int i = 0; i < allSessions.Count; i++)
             {
+                AudioSessionControl? session = null;
                 try
                 {
-                    var session = allSessions[i];
+                    session = allSessions[i];
                     var processId = session.GetProcessID;
 
                     if (processId == 0) continue;
@@ -167,6 +190,13 @@ public class AudioControlService : IDisposable, IMMNotificationClient
                 {
                     _logger.LogWarning(ex, "Error reading session info at index {Index}", i);
                 }
+                finally
+                {
+                    if (session != null && Marshal.IsComObject(session))
+                    {
+                        Marshal.ReleaseComObject(session);
+                    }
+                }
             }
         }
         catch (Exception ex)
@@ -175,6 +205,10 @@ public class AudioControlService : IDisposable, IMMNotificationClient
         }
         finally
         {
+            if (allSessions != null && Marshal.IsComObject(allSessions))
+            {
+                Marshal.ReleaseComObject(allSessions);
+            }
             device?.Dispose();
         }
 
@@ -184,6 +218,64 @@ public class AudioControlService : IDisposable, IMMNotificationClient
     public async Task<List<AudioSessionInfo>> GetFreshAudioSessionsAsync()
     {
         return await GetAllAudioSessionsAsync();
+    }
+
+    private async Task<List<AudioSessionControl>> GetCachedSessionsForProcess(string processName)
+    {
+        var normalizedName = NormalizeProcessName(processName);
+
+        if (_sessionCache.TryGetValue(normalizedName, out var cached))
+        {
+            var age = DateTime.UtcNow - cached.LastFetch;
+            if (age < _sessionCacheLifetime)
+            {
+                var validSessions = new List<AudioSessionControl>();
+                foreach (var session in cached.Sessions)
+                {
+                    try
+                    {
+                        _ = session.GetProcessID;
+                        validSessions.Add(session);
+                    }
+                    catch
+                    {
+                        if (Marshal.IsComObject(session))
+                        {
+                            Marshal.ReleaseComObject(session);
+                        }
+                    }
+                }
+
+                if (validSessions.Any())
+                {
+                    _logger.LogDebug("Using cached sessions for {ProcessName} ({Count} sessions, age {Ms}ms)",
+                        processName, validSessions.Count, age.TotalMilliseconds);
+                    return validSessions;
+                }
+            }
+
+            foreach (var session in cached.Sessions)
+            {
+                try
+                {
+                    if (Marshal.IsComObject(session))
+                    {
+                        Marshal.ReleaseComObject(session);
+                    }
+                }
+                catch { }
+            }
+            _sessionCache.TryRemove(normalizedName, out _);
+        }
+
+        var freshSessions = await GetFreshSessionsForProcess(processName);
+
+        if (freshSessions.Any())
+        {
+            _sessionCache[normalizedName] = (freshSessions, DateTime.UtcNow);
+        }
+
+        return freshSessions;
     }
 
     public async Task SetAppVolumeAsync(string processName, float volume)
@@ -208,7 +300,7 @@ public class AudioControlService : IDisposable, IMMNotificationClient
                     break;
                 }
 
-                var sessions = await GetFreshSessionsForProcess(processName);
+                var sessions = await GetCachedSessionsForProcess(processName);
 
                 if (!sessions.Any())
                 {
@@ -229,6 +321,8 @@ public class AudioControlService : IDisposable, IMMNotificationClient
                     {
                         _logger.LogError(ex, "Failed to set volume for session {ProcessName} (PID: {Pid})",
                             processName, session.GetProcessID);
+
+                        _sessionCache.TryRemove(normalizedName, out _);
                     }
                 }
 
@@ -275,6 +369,13 @@ public class AudioControlService : IDisposable, IMMNotificationClient
                 {
                     _logger.LogError(ex, "Failed to set mute state for session {ProcessName} (PID: {Pid})",
                         processName, session.GetProcessID);
+                }
+                finally
+                {
+                    if (Marshal.IsComObject(session))
+                    {
+                        Marshal.ReleaseComObject(session);
+                    }
                 }
             }
         }
@@ -421,15 +522,16 @@ public class AudioControlService : IDisposable, IMMNotificationClient
         }
 
         var sessions = await GetFreshSessionsForProcess(processName);
-        var session = sessions.FirstOrDefault(s => s.GetProcessID == processId);
-
-        if (session == null)
-        {
-            return null;
-        }
 
         try
         {
+            var session = sessions.FirstOrDefault(s => s.GetProcessID == processId);
+
+            if (session == null)
+            {
+                return null;
+            }
+
             return new AudioSessionInfo
             {
                 ProcessName = processName,
@@ -443,6 +545,16 @@ public class AudioControlService : IDisposable, IMMNotificationClient
         {
             _logger.LogError(ex, "Error getting active app session info");
             return null;
+        }
+        finally
+        {
+            foreach (var session in sessions)
+            {
+                if (Marshal.IsComObject(session))
+                {
+                    Marshal.ReleaseComObject(session);
+                }
+            }
         }
     }
 
@@ -492,6 +604,22 @@ public class AudioControlService : IDisposable, IMMNotificationClient
         {
             _logger.LogWarning(ex, "Error unregistering endpoint notification callback");
         }
+
+        foreach (var cache in _sessionCache.Values)
+        {
+            foreach (var session in cache.Sessions)
+            {
+                try
+                {
+                    if (Marshal.IsComObject(session))
+                    {
+                        Marshal.ReleaseComObject(session);
+                    }
+                }
+                catch { }
+            }
+        }
+        _sessionCache.Clear();
 
         foreach (var lockPair in _processLocks)
         {

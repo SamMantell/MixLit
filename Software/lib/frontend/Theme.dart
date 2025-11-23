@@ -360,7 +360,7 @@ class AppTheme {
           elevation: 2,
         ),
       ),
-      tabBarTheme: const TabBarTheme(
+      tabBarTheme: const TabBarThemeData(
         labelStyle: TextStyle(
           fontFamily: fontFamily,
         ),
@@ -446,7 +446,7 @@ class AppTheme {
           elevation: 2,
         ),
       ),
-      tabBarTheme: const TabBarTheme(
+      tabBarTheme: const TabBarThemeData(
         labelStyle: TextStyle(
           fontFamily: fontFamily,
         ),

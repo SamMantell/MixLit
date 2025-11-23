@@ -14,6 +14,7 @@ public class AudioSessionMonitor : BackgroundService
     private MMDeviceEnumerator? _deviceEnumerator;
     private MMDevice? _defaultDevice;
     private string? _currentDeviceId;
+    private int _monitorCycles = 0;
 
     public AudioSessionMonitor(
         ILogger<AudioSessionMonitor> logger,
@@ -36,7 +37,7 @@ public class AudioSessionMonitor : BackgroundService
             while (!stoppingToken.IsCancellationRequested)
             {
                 await MonitorSessionsAsync(stoppingToken);
-                await Task.Delay(TimeSpan.FromMilliseconds(500), stoppingToken);
+                await Task.Delay(TimeSpan.FromSeconds(1), stoppingToken);
             }
         }
         catch (Exception ex)
@@ -182,5 +183,12 @@ public class AudioSessionMonitor : BackgroundService
         {
             _logger.LogError(ex, "Error monitoring audio sessions");
         }
+
+        if (++_monitorCycles % 60 == 0) // Every minute
+        {
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+        }
+
     }
 }
