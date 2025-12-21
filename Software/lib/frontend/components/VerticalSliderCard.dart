@@ -14,7 +14,8 @@ class VerticalSliderCard extends StatelessWidget {
   final VoidCallback onMutePressed;
   final VoidCallback onTap;
   final bool isDarkMode;
-  
+  final bool hasIntegration;
+
   // New properties for group support
   final bool isGroup;
   final int? appCount;
@@ -35,6 +36,7 @@ class VerticalSliderCard extends StatelessWidget {
     required this.onTap,
     required this.isDarkMode,
     this.isGroup = false,
+    this.hasIntegration = false,
     this.appCount,
     this.sliderType,
   });
@@ -104,6 +106,30 @@ class VerticalSliderCard extends StatelessWidget {
                           // Use different icons based on slider type
                           _buildMainIcon(),
 
+                          //Integration
+                          if (hasIntegration)
+                            Positioned(
+                              right: 0,
+                              top: 0,
+                              child: Container(
+                                width: 20,
+                                height: 20,
+                                decoration: BoxDecoration(
+                                  color: effectiveAccentColor,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: baseColor,
+                                    width: 2,
+                                  ),
+                                ),
+                                child: const Icon(
+                                  Icons.power,
+                                  color: Colors.white,
+                                  size: 16,
+                                ),
+                              ),
+                            ),
+
                           // Edit icon for active sliders
                           if (isActive)
                             Positioned(
@@ -161,7 +187,8 @@ class VerticalSliderCard extends StatelessWidget {
                         fontFamily: 'BitstreamVeraSans',
                         color: isMuted ? mutedTextColor : textColor,
                         fontSize: 12,
-                        fontWeight: isMuted ? FontWeight.bold : FontWeight.normal,
+                        fontWeight:
+                            isMuted ? FontWeight.bold : FontWeight.normal,
                       ),
                     ),
                     if (isGroup && appCount != null)
@@ -196,12 +223,12 @@ class VerticalSliderCard extends StatelessWidget {
                   child: SliderTheme(
                     data: SliderThemeData(
                       trackHeight: 60,
-                      thumbColor: isMuted ? Colors.grey : effectiveAccentColor,
+                      thumbColor: Colors.transparent,
                       activeTrackColor: isMuted
                           ? Colors.grey.withOpacity(0.3)
                           : effectiveAccentColorStrong,
                       inactiveTrackColor: Colors.transparent,
-                      overlayColor: effectiveAccentColorLight,
+                      overlayColor: Colors.transparent,
                       thumbShape: SliderThumbShape(
                         isMuted: isMuted,
                         accentColor: effectiveAccentColor,
@@ -281,12 +308,12 @@ class VerticalSliderCard extends StatelessWidget {
       ),
     );
   }
-  
+
   Widget _buildMainIcon() {
     if (iconWidget != null) {
       return iconWidget!;
     }
-    
+
     // Return appropriate icon based on slider type
     switch (sliderType) {
       case 'group':
@@ -332,8 +359,96 @@ class CustomTrackShape extends RoundedRectSliderTrackShape {
     final double trackLeft = offset.dx;
     final double trackTop =
         offset.dy + (parentBox.size.height - trackHeight) / 2;
-    final double trackWidth = parentBox.size.width;
+    final double trackWidth = parentBox.size.width + 30;
     return Rect.fromLTWH(trackLeft, trackTop, trackWidth, trackHeight);
+  }
+
+  @override
+  void paint(
+    PaintingContext context,
+    Offset offset, {
+    required RenderBox parentBox,
+    required SliderThemeData sliderTheme,
+    required Animation<double> enableAnimation,
+    required TextDirection textDirection,
+    required Offset thumbCenter,
+    Offset? secondaryOffset,
+    bool isDiscrete = false,
+    bool isEnabled = false,
+    double additionalActiveTrackHeight = 2,
+  }) {
+    if (sliderTheme.trackHeight == null || sliderTheme.trackHeight! <= 0) {
+      return;
+    }
+
+    final Rect trackRect = getPreferredRect(
+      parentBox: parentBox,
+      offset: offset,
+      sliderTheme: sliderTheme,
+      isEnabled: isEnabled,
+      isDiscrete: isDiscrete,
+    );
+
+    final Canvas canvas = context.canvas;
+    final double trackRadius = trackRect.height / 2;
+
+    final Paint inactivePaint = Paint()
+      ..color = sliderTheme.inactiveTrackColor ?? Colors.grey.withOpacity(0.3)
+      ..style = PaintingStyle.fill;
+
+    final RRect inactiveRRect = RRect.fromRectAndRadius(
+      trackRect,
+      Radius.circular(trackRadius),
+    );
+    canvas.drawRRect(inactiveRRect, inactivePaint);
+
+    final double sliderValue =
+        (thumbCenter.dx - trackRect.left) / (trackRect.right - trackRect.left);
+
+    final double visualHeightStart = trackRect.left;
+    final double visualHeightEnd = thumbCenter.dx;
+
+    double thicknessScale = 1.0;
+    if (sliderValue <= 0.10) {
+      thicknessScale = sliderValue / 0.10;
+      thicknessScale = thicknessScale.clamp(0.0, 1.0);
+    }
+
+    final double originalThickness = trackRect.height;
+    final double scaledThickness = originalThickness * thicknessScale;
+
+    if (thicknessScale > 0.0 && visualHeightEnd > visualHeightStart) {
+      canvas.save();
+      canvas.clipRRect(inactiveRRect);
+
+      final double thicknessOffset = (originalThickness - scaledThickness) / 2;
+
+      final Rect activeTrackRect = Rect.fromLTRB(
+        visualHeightStart,
+        trackRect.top + thicknessOffset,
+        visualHeightEnd,
+        trackRect.bottom - thicknessOffset,
+      );
+
+      final Paint activePaint = Paint()
+        ..color = sliderTheme.activeTrackColor ?? Colors.blue
+        ..style = PaintingStyle.fill;
+
+      if (scaledThickness < 2.0) {
+        canvas.drawRect(activeTrackRect, activePaint);
+      } else {
+        final double scaledRadius =
+            (scaledThickness / 2).clamp(0.0, trackRadius);
+
+        final RRect activeRRect = RRect.fromRectAndRadius(
+          activeTrackRect,
+          Radius.circular(scaledRadius),
+        );
+        canvas.drawRRect(activeRRect, activePaint);
+      }
+
+      canvas.restore();
+    }
   }
 }
 
@@ -350,7 +465,7 @@ class SliderThumbShape extends SliderComponentShape {
 
   @override
   Size getPreferredSize(bool isEnabled, bool isDiscrete) {
-    return const Size(28, 28);
+    return const Size(0, 0);
   }
 
   @override
@@ -367,63 +482,7 @@ class SliderThumbShape extends SliderComponentShape {
     required double value,
     required double textScaleFactor,
     required Size sizeWithOverflow,
-  }) {
-    final Canvas canvas = context.canvas;
-    final thumbColor = isMuted ? Colors.grey : accentColor;
-
-    final Paint fillPaint = Paint()
-      ..color = thumbColor
-      ..style = PaintingStyle.fill;
-
-    canvas.drawCircle(center, 10, fillPaint);
-
-    if (isMuted) {
-      final Paint linePaint = Paint()
-        ..color = Colors.white
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2;
-
-      canvas.drawLine(
-        Offset(center.dx - 5, center.dy - 5),
-        Offset(center.dx + 5, center.dy + 5),
-        linePaint,
-      );
-
-      canvas.drawLine(
-        Offset(center.dx + 5, center.dy - 5),
-        Offset(center.dx - 5, center.dy + 5),
-        linePaint,
-      );
-    } else if (isGroup) {
-      // Draw a small folder icon for groups
-      final Paint iconPaint = Paint()
-        ..color = Colors.white
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1;
-
-      // Simple folder representation
-      final Path folderPath = Path();
-      folderPath.moveTo(center.dx - 4, center.dy - 2);
-      folderPath.lineTo(center.dx - 2, center.dy - 4);
-      folderPath.lineTo(center.dx + 4, center.dy - 4);
-      folderPath.lineTo(center.dx + 4, center.dy + 3);
-      folderPath.lineTo(center.dx - 4, center.dy + 3);
-      folderPath.close();
-
-      canvas.drawPath(folderPath, iconPaint);
-    } else {
-      final Paint linePaint = Paint()
-        ..color = Colors.white
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2;
-
-      canvas.drawLine(
-        Offset(center.dx - 5, center.dy),
-        Offset(center.dx + 5, center.dy),
-        linePaint,
-      );
-    }
-  }
+  }) {}
 }
 
 class MuteButton extends StatelessWidget {
@@ -445,7 +504,7 @@ class MuteButton extends StatelessWidget {
     return GestureDetector(
       onTap: isActive ? onPressed : null,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
+        duration: const Duration(milliseconds: 100),
         width: 60,
         height: 40,
         decoration: BoxDecoration(
@@ -454,7 +513,7 @@ class MuteButton extends StatelessWidget {
                   ? Colors.red.withOpacity(0.8)
                   : accentColor.withOpacity(0.8))
               : Colors.grey.withOpacity(0.3),
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(10),
           boxShadow: isActive
               ? [
                   BoxShadow(

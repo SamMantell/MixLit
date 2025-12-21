@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:mixlit/backend/application/audio/VolumeController.dart';
+import 'package:mixlit/backend/application/integration/SpotifyIntegration.dart';
 import 'package:mixlit/frontend/components/util/rate_limit_updates.dart';
 import 'package:tray_manager/tray_manager.dart';
 //import 'package:mixlit/backend/LEDController.dart';
@@ -95,6 +96,7 @@ class _HomePageState extends State<HomePage>
 
   Future<void> _initializeServices() async {
     try {
+      await SpotifyIntegration.instance.initialize();
       await _audioServiceClient.connect();
       _audioServiceConnected = true;
       print('Audio service connected successfully');
@@ -633,7 +635,7 @@ class _HomePageState extends State<HomePage>
     final previousAssignedApp = _assignedApps[index];
     final previousTag = _sliderTags[index];
 
-    _assignedApps = await assignApplication(
+    final result = await assignApplication(
       context,
       index,
       _applicationManager,
@@ -643,9 +645,35 @@ class _HomePageState extends State<HomePage>
       _sliderTags,
     );
 
-    if (previousAssignedApp != _assignedApps[index] ||
-        previousTag != _sliderTags[index]) {
+    if (result is Map<String, dynamic> && result['isIntegration'] == true) {
+      final integrationData = result['integrationData'];
+      await _applicationManager.assignIntegrationToSlider(
+          index, integrationData);
+
+      setState(() {
+        _sliderTags[index] = 'integration';
+        _assignedApps[index] = null;
+        _volumeController.updateSliderTags(_sliderTags);
+        _volumeController.updateAssignedApps(_assignedApps);
+      });
+
       await _updateSliderColor(index);
+      return;
+    }
+
+    if (result is List<AudioSessionInfo?>) {
+      _assignedApps = result;
+
+      if (previousAssignedApp != _assignedApps[index] ||
+          previousTag != _sliderTags[index]) {
+        await _updateSliderColor(index);
+      }
+
+      setState(() {
+        _volumeController.updateSliderTags(_sliderTags);
+        _volumeController.updateAssignedApps(_assignedApps);
+        _configLoaded = true;
+      });
     }
 
     _initialHardwareValuesSubscription =
@@ -664,6 +692,22 @@ class _HomePageState extends State<HomePage>
   Future<void> _updateSliderColor(int index) async {
     final app = _assignedApps[index];
     final sliderTag = _sliderTags[index];
+
+    if (sliderTag == 'integration') {
+      final integration = _applicationManager.assignedIntegrations[index];
+      if (integration != null) {
+        if (integration['type'] == 'spotify') {
+          _sliderColors[index] = const Color(0xFF1DB954);
+        } else if (integration['type'] == 'sonos') {
+          _sliderColors[index] = const Color(0xFFD8A158);
+        } else {
+          _sliderColors[index] = AppTheme.defaultAppColor;
+        }
+      } else {
+        _sliderColors[index] = AppTheme.defaultAppColor;
+      }
+      return;
+    }
 
     if (sliderTag == ConfigManager.TAG_DEFAULT_DEVICE) {
       _sliderColors[index] = AppTheme.deviceVolumeColor;
@@ -710,6 +754,36 @@ class _HomePageState extends State<HomePage>
     final hasMissingApp =
         _applicationManager.missingApplications.containsKey(index);
     final hasGroup = _applicationManager.assignedGroups.containsKey(index);
+    final hasIntegration =
+        _applicationManager.assignedIntegrations.containsKey(index);
+
+    if (sliderTag == 'integration') {
+      if (hasIntegration) {
+        final integration = _applicationManager.assignedIntegrations[index]!;
+        if (integration['type'] == 'spotify') {
+          return Container(
+            width: 32,
+            height: 32,
+            child: Image.asset(
+              'lib/frontend/assets/images/logo/integrations/Spotify.png',
+              fit: BoxFit.contain,
+            ),
+          );
+        } else if (integration['type'] == 'sonos') {
+          return Container(
+            width: 32,
+            height: 32,
+            child: Image.asset(
+              'lib/frontend/assets/images/logo/integrations/Sonos.png',
+              fit: BoxFit.contain,
+            ),
+          );
+        }
+      } else {
+        return Icon(Icons.error_outline,
+            color: Colors.orange, size: AppTheme.iconSizeLarge);
+      }
+    }
 
     if (sliderTag == ConfigManager.TAG_DEFAULT_DEVICE) {
       return Icon(Icons.speaker,
@@ -763,6 +837,31 @@ class _HomePageState extends State<HomePage>
     final hasMissingApp =
         _applicationManager.missingApplications.containsKey(index);
     final hasGroup = _applicationManager.assignedGroups.containsKey(index);
+    final hasIntegration =
+        _applicationManager.assignedIntegrations.containsKey(index);
+
+    if (sliderTag == 'integration' && hasIntegration) {
+      final integration = _applicationManager.assignedIntegrations[index]!;
+      if (integration['type'] == 'spotify') {
+        return Container(
+          width: 24,
+          height: 24,
+          child: Image.asset(
+            'lib/frontend/assets/images/logo/integrations/Spotify.png',
+            fit: BoxFit.contain,
+          ),
+        );
+      } else if (integration['type'] == 'sonos') {
+        return Container(
+          width: 24,
+          height: 24,
+          child: Image.asset(
+            'lib/frontend/assets/images/logo/integrations/Sonos.png',
+            fit: BoxFit.contain,
+          ),
+        );
+      }
+    }
 
     if (sliderTag == ConfigManager.TAG_DEFAULT_DEVICE) {
       return Icon(Icons.speaker,
@@ -814,6 +913,19 @@ class _HomePageState extends State<HomePage>
     final sliderTag = _sliderTags[index];
     final app = _assignedApps[index];
     final hasGroup = _applicationManager.assignedGroups.containsKey(index);
+    final hasIntegration =
+        _applicationManager.assignedIntegrations.containsKey(index);
+
+    if (sliderTag == 'integration' && hasIntegration) {
+      final integration = _applicationManager.assignedIntegrations[index];
+      if (integration != null) {
+        final displayName = integration['displayName'] ??
+            integration['deviceName'] ??
+            integration['type'] ??
+            'Integration';
+        return displayName;
+      }
+    }
 
     if (sliderTag == ConfigManager.TAG_DEFAULT_DEVICE) {
       return 'Device';
@@ -845,6 +957,19 @@ class _HomePageState extends State<HomePage>
     final sliderTag = _sliderTags[index];
     final app = _assignedApps[index];
     final hasGroup = _applicationManager.assignedGroups.containsKey(index);
+    final hasIntegration =
+        _applicationManager.assignedIntegrations.containsKey(index);
+
+    if (sliderTag == 'integration' && hasIntegration) {
+      final integration = _applicationManager.assignedIntegrations[index];
+      if (integration != null) {
+        final displayName = integration['displayName'] ??
+            integration['deviceName'] ??
+            integration['type'] ??
+            'Integration';
+        return displayName;
+      }
+    }
 
     if (sliderTag == ConfigManager.TAG_DEFAULT_DEVICE) {
       return 'Device';
@@ -875,6 +1000,10 @@ class _HomePageState extends State<HomePage>
   bool _isSliderActive(int index) {
     final sliderTag = _sliderTags[index];
     if (sliderTag == ConfigManager.TAG_UNASSIGNED) return false;
+
+    if (sliderTag == 'integration') {
+      return _applicationManager.assignedIntegrations.containsKey(index);
+    }
 
     if (sliderTag == ConfigManager.TAG_GROUP) {
       return _applicationManager.assignedGroups.containsKey(index);
@@ -937,7 +1066,7 @@ class _HomePageState extends State<HomePage>
                 const CircularProgressIndicator(),
                 SizedBox(height: AppTheme.spacingLarge),
                 Text(
-                  'Loading configuration...',
+                  'Starting Services...',
                   style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                         color: AppTheme.getPrimaryTextColor(isDarkMode),
                       ),
@@ -1165,6 +1294,9 @@ class _HomePageState extends State<HomePage>
                           },
                           onTap: () => _selectApp(dialIndex),
                           isDarkMode: isDarkMode,
+                          hasIntegration: _applicationManager
+                              .assignedIntegrations
+                              .containsKey(dialIndex),
                         ),
                       );
                     }),
@@ -1233,6 +1365,8 @@ class _HomePageState extends State<HomePage>
                         onMutePressed: () => _toggleMute(index),
                         onTap: () => _selectApp(index),
                         isDarkMode: isDarkMode,
+                        hasIntegration: _applicationManager.assignedIntegrations
+                            .containsKey(index),
                       );
 
                       return Expanded(

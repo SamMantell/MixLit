@@ -2,6 +2,8 @@ import 'dart:async';
 import 'package:mixlit/backend/application/data/ConfigManager.dart';
 import 'package:mixlit/backend/application/data/StorageManager.dart';
 import 'package:mixlit/backend/application/audio/audio_service_client.dart';
+import 'package:mixlit/backend/application/integration/SonosIntegration.dart';
+import 'package:mixlit/backend/application/integration/SpotifyIntegration.dart';
 import 'package:mixlit/frontend/menus/AssignApplicationMenu.dart';
 
 class MissingApp {
@@ -31,6 +33,7 @@ class ApplicationManager {
   Map<int, AudioSessionInfo> assignedApplications = {};
   Map<int, MissingApp> missingApplications = {};
   Map<int, AppGroup> assignedGroups = {};
+  Map<int, Map<String, dynamic>> assignedIntegrations = {};
   List<double> sliderValues = List.filled(8, 0.5);
   List<String> sliderTags = List.filled(8, 'defaultDevice');
   List<bool> muteStates = List.filled(8, false);
@@ -56,6 +59,9 @@ class ApplicationManager {
 
   Future<void> _initialize() async {
     await _serviceClient.connect();
+
+    await SpotifyIntegration.instance.initialize();
+    await SonosIntegration.instance.initialize();
 
     // listen for session changes
     _sessionAddedSubscription =
@@ -334,7 +340,29 @@ class ApplicationManager {
         final sliderTag = config['sliderTag'] ?? 'unassigned';
         print('Processing slider $i with tag: $sliderTag');
 
-        if (sliderTag == ConfigManager.TAG_GROUP && config['group'] != null) {
+        if (sliderTag == ConfigManager.TAG_INTEGRATION &&
+            config['integration'] != null) {
+          final integration = config['integration'] as Map<String, dynamic>;
+
+          //TODO: fix integration restoration upon app start-up
+          bool integrationValid = false;
+
+          if (integration['type'] == 'spotify') {
+            integrationValid = await _restoreSpotifyIntegration(i, integration);
+          } else if (integration['type'] == 'sonos') {
+            integrationValid = await _restoreSonosIntegration(i, integration);
+          }
+
+          if (integrationValid) {
+            assignedIntegrations[i] = integration;
+          } else {
+            print(
+                'Failed to restore ${integration['type']} integration for slider $i - marking as missing');
+            // Mark as missing so user knows to reassign
+            sliderTags[i] = ConfigManager.TAG_UNASSIGNED;
+          }
+        } else if (sliderTag == ConfigManager.TAG_GROUP &&
+            config['group'] != null) {
           try {
             final group = AppGroup.fromJson(config['group']);
             assignedGroups[i] = group;
@@ -398,6 +426,94 @@ class ApplicationManager {
     }
   }
 
+  Future<bool> _restoreSpotifyIntegration(
+    int sliderIndex,
+    Map<String, dynamic> integration,
+  ) async {
+    try {
+      if (!SpotifyIntegration.instance.isAuthenticated) {
+        print('Spotify not authenticated, cannot restore integration');
+        return false;
+      }
+
+      final deviceId = integration['deviceId'] as String?;
+      if (deviceId == null) {
+        print('No deviceId in saved Spotify integration');
+        return false;
+      }
+
+      final devices = await SpotifyIntegration.instance.getAvailableDevices();
+      final deviceExists = devices.any((d) => d.id == deviceId);
+
+      if (!deviceExists) {
+        print('Saved Spotify device $deviceId no longer available');
+        return false;
+      }
+
+      await SpotifyIntegration.instance.selectDevice(deviceId);
+      print('Restored Spotify device: $deviceId');
+      return true;
+    } catch (e) {
+      print('Error restoring Spotify integration: $e');
+      return false;
+    }
+  }
+
+  Future<bool> _restoreSonosIntegration(
+    int sliderIndex,
+    Map<String, dynamic> integration,
+  ) async {
+    try {
+      if (!SonosIntegration.instance.isAuthenticated) {
+        print('Sonos not authenticated, cannot restore integration');
+        return false;
+      }
+
+      final deviceId = integration['deviceId'] as String?; // player ID
+      final groupId = integration['groupId'] as String?;
+      final deviceName = integration['deviceName'] as String?;
+
+      if (deviceId == null || deviceName == null) {
+        print('Missing deviceId or deviceName in saved Sonos integration');
+        return false;
+      }
+
+      print('Discovering Sonos devices to validate saved device...');
+      final devices = await SonosIntegration.instance.discoverDevices(
+        useCache: false,
+      );
+
+      final deviceExists =
+          devices.any((d) => d.id == deviceId || d.groupId == groupId);
+
+      if (!deviceExists) {
+        print('Saved Sonos device $deviceName no longer available');
+        print(
+            'Available devices: ${devices.map((d) => '${d.name} (${d.id})').join(', ')}');
+        return false;
+      }
+
+      final matchingDevice = devices.firstWhere(
+        (d) => d.id == deviceId || d.groupId == groupId,
+      );
+
+      integration['deviceId'] = matchingDevice.id;
+      integration['groupId'] = matchingDevice.groupId;
+      integration['deviceName'] = matchingDevice.name;
+      integration['displayName'] = matchingDevice.name;
+
+      await SonosIntegration.instance.selectDevice(
+        matchingDevice.id,
+        matchingDevice.ipAddress,
+        matchingDevice.name,
+      );
+      return true;
+    } catch (e) {
+      print('Error restoring Sonos integration: $e');
+      return false;
+    }
+  }
+
   Future<void> _createMissingAppEntry(
       int sliderIndex, Map<String, dynamic> config) async {
     final processName = config['processName'] as String;
@@ -436,6 +552,17 @@ class ApplicationManager {
   // ==================== NEW API SYSTEM YIPPEE ====================
 
   Map<String, dynamic> getSliderDisplayInfo(int sliderIndex) {
+    if (assignedIntegrations.containsKey(sliderIndex)) {
+      final integration = assignedIntegrations[sliderIndex]!;
+      return {
+        'type': 'integration',
+        'integrationType': integration['type'],
+        'displayName': integration['displayName'] ?? 'Integration',
+        'isActive': true,
+        'hasIntegration': true,
+      };
+    }
+
     if (assignedGroups.containsKey(sliderIndex)) {
       final group = assignedGroups[sliderIndex]!;
       return {
@@ -502,6 +629,30 @@ class ApplicationManager {
       'displayName': 'Unassigned',
       'isActive': false,
     };
+  }
+
+  Future<void> assignIntegrationToSlider(
+    int sliderIndex,
+    Map<String, dynamic> integrationData,
+  ) async {
+    assignedIntegrations[sliderIndex] = integrationData;
+    sliderTags[sliderIndex] = 'integration';
+
+    // Clear other assignments
+    assignedApplications.remove(sliderIndex);
+    missingApplications.remove(sliderIndex);
+    assignedGroups.remove(sliderIndex);
+    _recentlyRestoredApps.remove(sliderIndex);
+
+    print(
+        'Assigned ${integrationData['type']} integration to slider $sliderIndex');
+
+    // Save to config
+    _configManager.updateSliderConfigForIntegration(
+      sliderIndex,
+      integrationData,
+      muteStates[sliderIndex],
+    );
   }
 
   Future<List<AudioSessionInfo>> getRunningApplicationsWithAudio() async {
@@ -578,6 +729,25 @@ class ApplicationManager {
     sliderValues[sliderIndex] = sliderValue;
     final normalizedVolume = sliderValue / 1024.0;
 
+    // Integration?
+    if (assignedIntegrations.containsKey(sliderIndex)) {
+      final integration = assignedIntegrations[sliderIndex]!;
+      if (integration['type'] == 'spotify') {
+        SpotifyIntegration.instance.setVolume(
+          normalizedVolume,
+          deviceId: integration['deviceId'],
+        );
+        return;
+      } else if (integration['type'] == 'sonos') {
+        SonosIntegration.instance.setVolume(
+          normalizedVolume,
+          deviceId: integration['deviceId'],
+          groupId: integration['groupId'],
+        );
+        return;
+      }
+    }
+
     // Group?
     if (assignedGroups.containsKey(sliderIndex)) {
       final group = assignedGroups[sliderIndex]!;
@@ -622,6 +792,26 @@ class ApplicationManager {
 
   Future<void> setMuteState(int sliderIndex, bool isMuted) async {
     muteStates[sliderIndex] = isMuted;
+
+    //Integration?
+    if (assignedIntegrations.containsKey(sliderIndex)) {
+      final integration = assignedIntegrations[sliderIndex]!;
+      if (integration['type'] == 'sonos') {
+        await SonosIntegration.instance.setMute(
+          isMuted,
+          deviceId: integration['deviceId'],
+          groupId: integration['groupId'],
+        );
+
+        _configManager.updateSliderConfigForIntegration(
+          sliderIndex,
+          integration,
+          isMuted,
+        );
+        return;
+      }
+      //TODO: Add spotify mute handling
+    }
 
     // Group?
     if (assignedGroups.containsKey(sliderIndex)) {
@@ -691,6 +881,7 @@ class ApplicationManager {
     assignedApplications.remove(sliderIndex);
     missingApplications.remove(sliderIndex);
     assignedGroups.remove(sliderIndex);
+    assignedIntegrations.remove(sliderIndex);
     _recentlyRestoredApps.remove(sliderIndex);
 
     sliderValues[sliderIndex] = 0;

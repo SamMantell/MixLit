@@ -13,6 +13,7 @@ class HorizontalDialCard extends StatelessWidget {
   final ValueChanged<double> onDialChanged;
   final VoidCallback onTap;
   final bool isDarkMode;
+  final bool hasIntegration;
 
   const HorizontalDialCard({
     super.key,
@@ -26,6 +27,7 @@ class HorizontalDialCard extends StatelessWidget {
     required this.onDialChanged,
     required this.onTap,
     required this.isDarkMode,
+    this.hasIntegration = false,
   });
 
   @override
@@ -70,6 +72,29 @@ class HorizontalDialCard extends StatelessWidget {
               child: Stack(
                 alignment: Alignment.center,
                 children: [
+                  //Integration
+                  if (hasIntegration)
+                    Positioned(
+                      right: 0,
+                      top: 0,
+                      child: Container(
+                        width: 20,
+                        height: 20,
+                        decoration: BoxDecoration(
+                          color: effectiveAccentColor,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: baseColor,
+                            width: 2,
+                          ),
+                        ),
+                        child: const Icon(
+                          Icons.power,
+                          color: Colors.white,
+                          size: 12,
+                        ),
+                      ),
+                    ),
                   // Dial background and progress
                   if (isActive)
                     GestureDetector(

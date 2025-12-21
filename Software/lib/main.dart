@@ -8,6 +8,7 @@ import 'package:window_manager/window_manager.dart';
 import 'package:launch_at_startup/launch_at_startup.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:path/path.dart' as path;
+import 'dart:async';
 
 class StartupConfig {
   static const String _autoStartupEnabledKey = 'auto_startup_enabled';
@@ -77,7 +78,6 @@ class StartupConfig {
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
   await windowManager.ensureInitialized();
-
   final bool isAutoStarted = args.contains('--auto-start');
   final bool hideOnStartup = await StartupConfig.hideOnStartup;
   final bool autoStartupEnabled = await StartupConfig.autoStartupEnabled;

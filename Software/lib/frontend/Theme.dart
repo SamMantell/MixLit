@@ -93,6 +93,13 @@ class AppTheme {
   static const double statusIndicatorHeight = 36.0;
 
   //
+  // integartions
+  //
+
+  //spotify
+  static const Color spotifyIntegrationColor = Color(0xFF1DB954);
+
+  //
   // shadows & other fx
   //
 

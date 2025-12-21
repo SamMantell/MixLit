@@ -22,6 +22,7 @@ class ConfigManager {
   static const String TAG_ACTIVE_APP = 'mixlit.active';
   static const String TAG_UNASSIGNED = 'unassigned';
   static const String TAG_GROUP = 'mixlit.group';
+  static const String TAG_INTEGRATION = 'integration';
 
   Future<void> saveAppGroup(AppGroup group) async {
     try {
@@ -155,6 +156,32 @@ class ConfigManager {
 
     print(
         'Adjusted volume for ${groupApps.length} apps in group ${group.name}');
+  }
+
+  void updateSliderConfigForIntegration(
+    int sliderIndex,
+    Map<String, dynamic> integrationData,
+    bool isMuted,
+  ) {
+    final config = {
+      'sliderTag': TAG_INTEGRATION,
+      'integration': integrationData,
+      'isMuted': isMuted,
+    };
+
+    if (integrationData['type'] == 'spotify') {
+      config['brandColor'] = '#1DB954';
+      config['iconPath'] =
+          'lib/frontend/assets/images/logo/integrations/Spotify.png';
+    } else if (integrationData['type'] == 'sonos') {
+      config['brandColor'] = '#D8A158';
+      config['iconPath'] =
+          'lib/frontend/assets/images/logo/integrations/Sonos.png';
+    }
+
+    _sliderConfigsCache[sliderIndex] = config;
+    _sliderConfigsDirty = true;
+    saveAllSliderConfigs();
   }
 
   void updateSliderConfigForGroup(int sliderIndex, AppGroup group, bool isMuted,

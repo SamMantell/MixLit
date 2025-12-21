@@ -15,7 +15,6 @@ class Updater {
   static const String _githubReleasesUrl =
       'https://github.com/SamMantell/MixLit/releases/latest';
 
-  //IMPORTANT: set to false during development, but remember to set back to true before going live lol
   static const bool _updateEnabled = true;
 
   static final Updater _instance = Updater._internal();

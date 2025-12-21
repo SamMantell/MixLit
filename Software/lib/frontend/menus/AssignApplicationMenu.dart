@@ -7,6 +7,8 @@ import 'package:flutter/material.dart';
 import 'package:mixlit/backend/application/data/ConfigManager.dart';
 import 'package:mixlit/backend/application/audio/audio_service_client.dart';
 import 'package:mixlit/backend/application/audio/ApplicationManager.dart';
+import 'package:mixlit/frontend/menus/dialog/integrations/SpotifyIntegration.dart';
+import 'package:mixlit/frontend/menus/dialog/integrations/SonosIntegration.dart';
 
 class AppGroup {
   final String id;
@@ -222,7 +224,7 @@ class _AppSelectorDialogState extends State<_AppSelectorDialog> {
       child: Stack(
         children: [
           DefaultTabController(
-            length: 3,
+            length: 4,
             child: Dialog(
               backgroundColor: Colors.transparent,
               child: Container(
@@ -263,7 +265,7 @@ class _AppSelectorDialogState extends State<_AppSelectorDialog> {
                             tabs: [
                               Tab(
                                 child: Text(
-                                  'Applications',
+                                  'Apps',
                                   style: TextStyle(
                                     fontFamily: 'BitstreamVeraSans',
                                   ),
@@ -275,6 +277,13 @@ class _AppSelectorDialogState extends State<_AppSelectorDialog> {
                                   style: TextStyle(
                                     fontFamily: 'BitstreamVeraSans',
                                   ),
+                                ),
+                              ),
+                              Tab(
+                                child: Text(
+                                  'Plugins',
+                                  style: TextStyle(
+                                      fontFamily: 'BitstreamVeraSans'),
                                 ),
                               ),
                               Tab(
@@ -300,6 +309,7 @@ class _AppSelectorDialogState extends State<_AppSelectorDialog> {
                             appIcons: widget.appIcons,
                             isDarkMode: isDarkMode,
                           ),
+                          _buildIntegrationsTab(),
                           _buildSystemTab(),
                         ],
                       ),
@@ -467,6 +477,109 @@ class _AppSelectorDialogState extends State<_AppSelectorDialog> {
     );
   }
 
+  Widget _buildIntegrationsTab() {
+    return ListView(
+      children: [
+        //SPOTIFY
+        ListTile(
+          leading: Container(
+            width: 32,
+            height: 32,
+            child: Image.asset(
+              'lib/frontend/assets/images/logo/integrations/Spotify.png',
+              fit: BoxFit.contain,
+            ),
+          ),
+          title: const Text(
+            'Spotify',
+            style: TextStyle(
+              fontFamily: 'BitstreamVeraSans',
+              color: Colors.white,
+            ),
+          ),
+          subtitle: const Text(
+            'Control Spotify playback volume',
+            style: TextStyle(
+              fontFamily: 'BitstreamVeraSans',
+              color: Colors.white70,
+              fontSize: 12,
+            ),
+          ),
+          onTap: () async {
+            final result = await showDialog(
+              context: context,
+              builder: (context) => SpotifyIntegrationDialog(
+                sliderIndex: widget.sliderIndex,
+              ),
+            );
+
+            if (result != null && result is Map<String, dynamic>) {
+              Navigator.pop(context, {
+                'type': 'integration',
+                'integrationData': {
+                  'type': 'spotify',
+                  'deviceId': result['deviceId'],
+                  'deviceName': result['deviceName'],
+                  'displayName': 'Spotify\n${result['deviceName']}',
+                },
+              });
+            }
+          },
+        ),
+
+        //SONOS
+        ListTile(
+          leading: Container(
+            width: 32,
+            height: 32,
+            child: Image.asset(
+              'lib/frontend/assets/images/logo/integrations/Sonos.png',
+              fit: BoxFit.contain,
+            ),
+          ),
+          title: const Text(
+            'Sonos',
+            style: TextStyle(
+              fontFamily: 'BitstreamVeraSans',
+              color: const Color(0xFFD8A158),
+            ),
+          ),
+          subtitle: const Text(
+            'Control Sonos speaker volume',
+            style: TextStyle(
+              fontFamily: 'BitstreamVeraSans',
+              color: Colors.white70,
+              fontSize: 12,
+            ),
+          ),
+          onTap: () async {
+            final result = await showDialog(
+              context: context,
+              builder: (context) => SonosIntegrationDialog(
+                sliderIndex: widget.sliderIndex,
+              ),
+            );
+
+            if (result != null && result is Map<String, dynamic>) {
+              Navigator.pop(context, {
+                'type': 'integration',
+                'integrationData': {
+                  'type': 'sonos',
+                  'deviceId': result['deviceId'],
+                  'deviceIp': result['deviceIp'],
+                  'deviceName': result['deviceName'],
+                  'groupId': result['groupId'],
+                  'displayName': 'Sonos\n${result['deviceName']}',
+                },
+              });
+            }
+          },
+        ),
+        //TODO: Add more integrations?
+      ],
+    );
+  }
+
   Widget _buildSystemTab() {
     return ListView(
       children: [
@@ -528,7 +641,7 @@ class _AppSelectorDialogState extends State<_AppSelectorDialog> {
   }
 }
 
-Future<List<AudioSessionInfo?>> assignApplication(
+Future<dynamic> assignApplication(
   BuildContext context,
   int sliderIndex,
   ApplicationManager applicationManager,
@@ -578,6 +691,12 @@ Future<List<AudioSessionInfo?>> assignApplication(
         sliderTags[sliderIndex] = ConfigManager.TAG_GROUP;
         await applicationManager.assignGroupToSlider(sliderIndex, group);
         break;
+
+      case 'integration':
+        return {
+          'isIntegration': true,
+          'integrationData': result['integrationData'],
+        };
 
       case 'device':
         assignedApps[sliderIndex] = null;
