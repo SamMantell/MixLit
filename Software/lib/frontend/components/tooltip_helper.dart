@@ -24,12 +24,13 @@ class CustomTooltip extends StatelessWidget {
         fontSize: 12,
       ),
       decoration: BoxDecoration(
-        color: backgroundColor ?? Colors.black.withOpacity(0.8),
+        color: backgroundColor ??
+            const Color.fromARGB(255, 56, 56, 56).withOpacity(0.9),
         borderRadius: BorderRadius.circular(8),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       preferBelow: true,
-      verticalOffset: 16,
+      verticalOffset: 26,
       child: child,
     );
   }

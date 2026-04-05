@@ -1,10 +1,10 @@
 import 'dart:async';
+import 'package:mixlit/backend/application/audio/AppGroup.dart';
 import 'package:mixlit/backend/application/data/ConfigManager.dart';
 import 'package:mixlit/backend/application/data/StorageManager.dart';
 import 'package:mixlit/backend/application/audio/audio_service_client.dart';
 import 'package:mixlit/backend/application/integration/SonosIntegration.dart';
 import 'package:mixlit/backend/application/integration/SpotifyIntegration.dart';
-import 'package:mixlit/frontend/menus/AssignApplicationMenu.dart';
 
 class MissingApp {
   final String processName;
@@ -29,6 +29,9 @@ class ApplicationManager {
   final ConfigManager _configManager = ConfigManager.instance;
 
   AudioServiceClient get audioServiceClient => _serviceClient;
+
+  final List<AudioSessionInfo> _knownSessions = [];
+  List<AudioSessionInfo> get knownSessions => List.unmodifiable(_knownSessions);
 
   Map<int, AudioSessionInfo> assignedApplications = {};
   Map<int, MissingApp> missingApplications = {};
@@ -57,13 +60,10 @@ class ApplicationManager {
 
   Future<void> get configLoaded => _configLoadCompleter.future;
 
+  // IMPORTANT: Do NOT call _serviceClient.connect() here - the connection is
+  // already established by HomePage before ApplicationManager is constructed.
+
   Future<void> _initialize() async {
-    await _serviceClient.connect();
-
-    await SpotifyIntegration.instance.initialize();
-    await SonosIntegration.instance.initialize();
-
-    // listen for session changes
     _sessionAddedSubscription =
         _serviceClient.sessionAdded.listen(_onSessionAdded);
     _sessionRemovedSubscription =
@@ -72,39 +72,57 @@ class ApplicationManager {
         _serviceClient.sessionUpdated.listen(_onSessionUpdated);
 
     _startAudioSessionMonitoring();
-
     await _loadSavedConfiguration();
   }
 
   void _onSessionAdded(AudioSessionInfo session) {
-    //TODO: Update logging to show up on in-app terminal
-    print('New session detected: ${session.processName}');
+    _upsertKnownSession(session);
     _checkForMissingAudioSessions();
   }
 
+  // Moves the specific app to missing directly rather than re-scanning all sessions
   void _onSessionRemoved(AudioSessionInfo session) {
-    //TODO: Update logging to show up on in-app terminal
-    print('Session removed: ${session.processName}');
-    _validateAssignedApplications();
+    final normalized = _configManager.normalizeProcessName(session.processName);
+    _knownSessions.removeWhere((s) =>
+        _configManager.normalizeProcessName(s.processName) == normalized);
+    _removeAssignedAppByProcessName(session.processName);
+  }
+
+  void _removeAssignedAppByProcessName(String processName) {
+    final normalized = _configManager.normalizeProcessName(processName);
+    for (final entry in assignedApplications.entries) {
+      if (_configManager.normalizeProcessName(entry.value.processName) ==
+          normalized) {
+        _moveAppToMissing(entry.key);
+        return;
+      }
+    }
   }
 
   void _onSessionUpdated(AudioSessionInfo session) {
-    print(
-        'Session updated: ${session.processName} with new PID: ${session.processId}');
+    _upsertKnownSession(session);
 
-    //if process is assigned to slider
-    for (var entry in assignedApplications.entries) {
+    for (final entry in assignedApplications.entries) {
       final sliderIndex = entry.key;
       final app = entry.value;
 
       if (_configManager.normalizeProcessName(app.processName) ==
           _configManager.normalizeProcessName(session.processName)) {
         assignedApplications[sliderIndex] = session;
-        print(
-            'Updated slider $sliderIndex with new PID for ${session.processName}');
         _reapplyCurrentVolume(sliderIndex, session);
         break;
       }
+    }
+  }
+
+  void _upsertKnownSession(AudioSessionInfo session) {
+    final normalized = _configManager.normalizeProcessName(session.processName);
+    final idx = _knownSessions.indexWhere((s) =>
+        _configManager.normalizeProcessName(s.processName) == normalized);
+    if (idx != -1) {
+      _knownSessions[idx] = session;
+    } else {
+      _knownSessions.add(session);
     }
   }
 
@@ -113,9 +131,9 @@ class ApplicationManager {
     try {
       final currentVolume = sliderValues[sliderIndex];
       final currentMuteState = muteStates[sliderIndex];
-
-      print(
-          'Reapplying volume for slider $sliderIndex: volume=$currentVolume, muted=$currentMuteState');
+      if (currentVolume <= 0) {
+        return;
+      }
 
       await Future.delayed(const Duration(milliseconds: 150));
 
@@ -124,8 +142,6 @@ class ApplicationManager {
       } else {
         await adjustVolume(sliderIndex, currentVolume);
       }
-
-      print('Volume reapplied successfully for slider $sliderIndex');
     } catch (e) {
       print('Error reapplying volume for slider $sliderIndex: $e');
     }
@@ -141,58 +157,16 @@ class ApplicationManager {
   Future<void> _monitorAudioSessions() async {
     try {
       final now = DateTime.now();
-      _recentlyRestoredApps.removeWhere((sliderIndex, restorationTime) =>
-          now.difference(restorationTime) > _restorationGracePeriod);
+      _recentlyRestoredApps
+          .removeWhere((_, t) => now.difference(t) > _restorationGracePeriod);
 
-      // Force refresh sessions from service
       await _serviceClient.refreshSessions();
 
       if (missingApplications.isNotEmpty) {
         await _checkForMissingAudioSessions();
       }
-
-      await _validateAssignedApplications();
     } catch (e) {
       print('Error monitoring audio sessions: $e');
-    }
-  }
-
-  Future<void> _validateAssignedApplications() async {
-    final List<int> potentiallyMissingApps = [];
-    final allSessions = await _serviceClient.getAllSessions();
-
-    for (var entry in assignedApplications.entries) {
-      final sliderIndex = entry.key;
-      final app = entry.value;
-
-      if (_recentlyRestoredApps.containsKey(sliderIndex)) {
-        continue;
-      }
-
-      // Only check by process name, not PID since PID changes on restart
-      final stillActive = allSessions.any((session) =>
-          _configManager.normalizeProcessName(session.processName) ==
-          _configManager.normalizeProcessName(app.processName));
-
-      if (!stillActive) {
-        print('App ${app.processName} session no longer active');
-        potentiallyMissingApps.add(sliderIndex);
-      } else {
-        // Update the stored session with the new PID if it changed
-        final currentSession = allSessions.firstWhere((session) =>
-            _configManager.normalizeProcessName(session.processName) ==
-            _configManager.normalizeProcessName(app.processName));
-
-        if (currentSession.processId != app.processId) {
-          print(
-              'Updating PID for ${app.processName}: ${app.processId} -> ${currentSession.processId}');
-          assignedApplications[sliderIndex] = currentSession;
-        }
-      }
-    }
-
-    for (var sliderIndex in potentiallyMissingApps) {
-      await _moveAppToMissing(sliderIndex);
     }
   }
 
@@ -226,7 +200,6 @@ class ApplicationManager {
         final sliderIndex = entry.key;
         final missingApp = entry.value;
 
-        // Find by process name only, not path or PID
         final matchingApps = runningApps
             .where((app) =>
                 _configManager.normalizeProcessName(app.processName) ==
@@ -234,7 +207,6 @@ class ApplicationManager {
             .toList();
 
         if (matchingApps.isNotEmpty) {
-          // Take the first matching app (or implement logic to choose the best match)
           final matchingApp = matchingApps.first;
 
           print(
@@ -243,12 +215,24 @@ class ApplicationManager {
           assignedApplications[sliderIndex] = matchingApp;
           _recentlyRestoredApps[sliderIndex] = DateTime.now();
 
-          await _restoreVolumeForApp(
-            sliderIndex,
-            matchingApp,
-            sliderValues[sliderIndex],
-            muteStates[sliderIndex],
-          );
+          final storedVolume = sliderValues[sliderIndex];
+
+          if (storedVolume > 0) {
+            // hardware data processing
+            await _restoreVolumeForApp(
+              sliderIndex,
+              matchingApp,
+              storedVolume,
+              muteStates[sliderIndex],
+            );
+          } else {
+            _configManager.updateSliderConfig(
+              sliderIndex,
+              matchingApp.processPath,
+              sliderTags[sliderIndex],
+              muteStates[sliderIndex],
+            );
+          }
 
           foundApps.add(sliderIndex);
         }
@@ -315,8 +299,7 @@ class ApplicationManager {
       final configs = await _configManager.loadAllSliderConfigs();
       print('Loaded config data: $configs');
 
-      //TODO: Fix connection handshake & hardware-deterministic volume definition
-      sliderValues = List.filled(8, 0.1); // Default values
+      sliderValues = List.filled(8, 0.0);
       sliderTags = List<String>.from(configs['sliderTags']);
       muteStates = List<bool>.from(configs['muteStates']);
 
@@ -324,10 +307,30 @@ class ApplicationManager {
       List<AudioSessionInfo> runningApps = [];
 
       try {
-        runningApps = await getRunningApplicationsWithAudio();
+        print('Fetching running applications (without icons for speed)...');
+        for (int attempt = 0; attempt < 3; attempt++) {
+          runningApps = await _serviceClient
+              .getAllSessions(includeIcons: false)
+              .timeout(const Duration(seconds: 5));
+
+          if (runningApps.isNotEmpty) {
+            _knownSessions
+              ..clear()
+              ..addAll(runningApps);
+            print(
+                '[ApplicationManager] Seeded ${_knownSessions.length} known session(s) from startup fetch');
+            break;
+          }
+
+          if (attempt < 2) {
+            print('No sessions found on attempt ${attempt + 1}, retrying...');
+            await Future.delayed(const Duration(milliseconds: 800));
+          }
+        }
         print('Found ${runningApps.length} running apps with audio');
       } catch (e) {
         print('Error getting running applications: $e');
+        runningApps = [];
       }
 
       for (var i = 0; i < sliderConfigs.length; i++) {
@@ -343,8 +346,6 @@ class ApplicationManager {
         if (sliderTag == ConfigManager.TAG_INTEGRATION &&
             config['integration'] != null) {
           final integration = config['integration'] as Map<String, dynamic>;
-
-          //TODO: fix integration restoration upon app start-up
           bool integrationValid = false;
 
           if (integration['type'] == 'spotify') {
@@ -357,8 +358,7 @@ class ApplicationManager {
             assignedIntegrations[i] = integration;
           } else {
             print(
-                'Failed to restore ${integration['type']} integration for slider $i - marking as missing');
-            // Mark as missing so user knows to reassign
+                'Failed to restore ${integration['type']} integration for slider $i - marking as unassigned');
             sliderTags[i] = ConfigManager.TAG_UNASSIGNED;
           }
         } else if (sliderTag == ConfigManager.TAG_GROUP &&
@@ -405,7 +405,9 @@ class ApplicationManager {
       }
 
       _isConfigLoaded = true;
-      _configLoadCompleter.complete();
+      if (!_configLoadCompleter.isCompleted) {
+        _configLoadCompleter.complete();
+      }
 
       print('Configuration loading completed successfully');
 
@@ -413,15 +415,31 @@ class ApplicationManager {
         print(
             'Missing applications: ${missingApplications.keys.map((k) => '$k: ${missingApplications[k]!.displayName}').join(', ')}');
       }
-
       if (assignedGroups.isNotEmpty) {
         print(
             'Assigned groups: ${assignedGroups.keys.map((k) => '$k: ${assignedGroups[k]!.name}').join(', ')}');
       }
     } catch (e) {
       print('Error loading saved configuration: $e');
+      print('Stack trace: ${StackTrace.current}');
+      _isConfigLoaded = true;
       if (!_configLoadCompleter.isCompleted) {
         _configLoadCompleter.complete();
+      }
+    }
+  }
+
+  void updateGroupAcrossSliders(AppGroup updatedGroup) {
+    for (int i = 0; i < sliderTags.length; i++) {
+      if (sliderTags[i] == ConfigManager.TAG_GROUP &&
+          assignedGroups[i]?.id == updatedGroup.id) {
+        assignedGroups[i] = updatedGroup;
+
+        _configManager.updateSliderConfigForGroup(
+          i,
+          updatedGroup,
+          muteStates[i],
+        );
       }
     }
   }
@@ -469,7 +487,7 @@ class ApplicationManager {
         return false;
       }
 
-      final deviceId = integration['deviceId'] as String?; // player ID
+      final deviceId = integration['deviceId'] as String?;
       final groupId = integration['groupId'] as String?;
       final deviceName = integration['deviceName'] as String?;
 
@@ -549,8 +567,6 @@ class ApplicationManager {
     print('Created missing app entry for slider $sliderIndex: $displayName');
   }
 
-  // ==================== NEW API SYSTEM YIPPEE ====================
-
   Map<String, dynamic> getSliderDisplayInfo(int sliderIndex) {
     if (assignedIntegrations.containsKey(sliderIndex)) {
       final integration = assignedIntegrations[sliderIndex]!;
@@ -580,7 +596,6 @@ class ApplicationManager {
       final app = assignedApplications[sliderIndex]!;
       final processName = _configManager.extractProcessName(app.processPath);
       final displayName = _createDisplayName(processName);
-
       return {
         'type': 'active_app',
         'displayName': displayName,
@@ -608,26 +623,26 @@ class ApplicationManager {
       return {
         'type': 'device',
         'displayName': 'Default Device',
-        'isActive': true,
+        'isActive': true
       };
     } else if (tag == ConfigManager.TAG_MASTER_VOLUME) {
       return {
         'type': 'master',
         'displayName': 'Master Volume',
-        'isActive': true,
+        'isActive': true
       };
     } else if (tag == ConfigManager.TAG_ACTIVE_APP) {
       return {
         'type': 'active_app_control',
         'displayName': 'Active App',
-        'isActive': true,
+        'isActive': true
       };
     }
 
     return {
       'type': 'unassigned',
       'displayName': 'Unassigned',
-      'isActive': false,
+      'isActive': false
     };
   }
 
@@ -638,7 +653,6 @@ class ApplicationManager {
     assignedIntegrations[sliderIndex] = integrationData;
     sliderTags[sliderIndex] = 'integration';
 
-    // Clear other assignments
     assignedApplications.remove(sliderIndex);
     missingApplications.remove(sliderIndex);
     assignedGroups.remove(sliderIndex);
@@ -647,7 +661,6 @@ class ApplicationManager {
     print(
         'Assigned ${integrationData['type']} integration to slider $sliderIndex');
 
-    // Save to config
     _configManager.updateSliderConfigForIntegration(
       sliderIndex,
       integrationData,
@@ -655,8 +668,9 @@ class ApplicationManager {
     );
   }
 
-  Future<List<AudioSessionInfo>> getRunningApplicationsWithAudio() async {
-    return await _serviceClient.getAllSessions(includeIcons: true);
+  Future<List<AudioSessionInfo>> getRunningApplicationsWithAudio(
+      {bool includeIcons = false}) async {
+    return await _serviceClient.getAllSessions(includeIcons: includeIcons);
   }
 
   Future<AudioSessionInfo?> getActiveAppInfo() async {
@@ -729,26 +743,19 @@ class ApplicationManager {
     sliderValues[sliderIndex] = sliderValue;
     final normalizedVolume = sliderValue / 1024.0;
 
-    // Integration?
     if (assignedIntegrations.containsKey(sliderIndex)) {
       final integration = assignedIntegrations[sliderIndex]!;
       if (integration['type'] == 'spotify') {
-        SpotifyIntegration.instance.setVolume(
-          normalizedVolume,
-          deviceId: integration['deviceId'],
-        );
+        SpotifyIntegration.instance
+            .setVolume(normalizedVolume, deviceId: integration['deviceId']);
         return;
       } else if (integration['type'] == 'sonos') {
-        SonosIntegration.instance.setVolume(
-          normalizedVolume,
-          deviceId: integration['deviceId'],
-          groupId: integration['groupId'],
-        );
+        SonosIntegration.instance.setVolume(normalizedVolume,
+            deviceId: integration['deviceId'], groupId: integration['groupId']);
         return;
       }
     }
 
-    // Group?
     if (assignedGroups.containsKey(sliderIndex)) {
       final group = assignedGroups[sliderIndex]!;
       await _serviceClient.setVolume(
@@ -760,7 +767,6 @@ class ApplicationManager {
       return;
     }
 
-    // App?
     if (assignedApplications.containsKey(sliderIndex)) {
       final app = assignedApplications[sliderIndex]!;
       await _serviceClient.setVolume(
@@ -772,7 +778,6 @@ class ApplicationManager {
       return;
     }
 
-    // Check tag for any special types (via tagging)
     final tag = sliderTags[sliderIndex];
     if (tag == ConfigManager.TAG_ACTIVE_APP) {
       await _serviceClient.setVolume(
@@ -793,27 +798,17 @@ class ApplicationManager {
   Future<void> setMuteState(int sliderIndex, bool isMuted) async {
     muteStates[sliderIndex] = isMuted;
 
-    //Integration?
     if (assignedIntegrations.containsKey(sliderIndex)) {
       final integration = assignedIntegrations[sliderIndex]!;
       if (integration['type'] == 'sonos') {
-        await SonosIntegration.instance.setMute(
-          isMuted,
-          deviceId: integration['deviceId'],
-          groupId: integration['groupId'],
-        );
-
+        await SonosIntegration.instance.setMute(isMuted,
+            deviceId: integration['deviceId'], groupId: integration['groupId']);
         _configManager.updateSliderConfigForIntegration(
-          sliderIndex,
-          integration,
-          isMuted,
-        );
+            sliderIndex, integration, isMuted);
         return;
       }
-      //TODO: Add spotify mute handling
     }
 
-    // Group?
     if (assignedGroups.containsKey(sliderIndex)) {
       final group = assignedGroups[sliderIndex]!;
       await _serviceClient.setMute(
@@ -822,16 +817,10 @@ class ApplicationManager {
         targetType: TargetType.Group,
         processNames: group.processNames,
       );
-
-      _configManager.updateSliderConfigForGroup(
-        sliderIndex,
-        group,
-        isMuted,
-      );
+      _configManager.updateSliderConfigForGroup(sliderIndex, group, isMuted);
       return;
     }
 
-    // App?
     if (assignedApplications.containsKey(sliderIndex)) {
       final app = assignedApplications[sliderIndex]!;
       await _serviceClient.setMute(
@@ -840,25 +829,17 @@ class ApplicationManager {
         targetType: TargetType.App,
         processName: app.processName,
       );
-
       _configManager.updateSliderConfig(
-        sliderIndex,
-        app.processPath,
-        sliderTags[sliderIndex],
-        isMuted,
-      );
+          sliderIndex, app.processPath, sliderTags[sliderIndex], isMuted);
       return;
     }
 
-    // Check tag for any special types (via tagging)
     final tag = sliderTags[sliderIndex];
-
     if (tag == ConfigManager.TAG_ACTIVE_APP) {
       await _serviceClient.setMute(
           sliderIndex: sliderIndex,
           isMuted: isMuted,
           targetType: TargetType.ActiveApp);
-
       _configManager.updateSliderConfig(sliderIndex, null, tag, isMuted);
     } else if (tag == ConfigManager.TAG_DEFAULT_DEVICE ||
         tag == ConfigManager.TAG_MASTER_VOLUME) {
@@ -867,13 +848,7 @@ class ApplicationManager {
         isMuted: isMuted,
         targetType: TargetType.MasterVolume,
       );
-
-      _configManager.updateSliderConfig(
-        sliderIndex,
-        null,
-        tag,
-        isMuted,
-      );
+      _configManager.updateSliderConfig(sliderIndex, null, tag, isMuted);
     }
   }
 
@@ -889,7 +864,6 @@ class ApplicationManager {
     muteStates[sliderIndex] = false;
 
     _configManager.removeSliderConfig(sliderIndex);
-
     print('Slider $sliderIndex reset and configuration removed');
   }
 

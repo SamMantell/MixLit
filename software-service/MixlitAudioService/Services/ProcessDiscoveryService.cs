@@ -18,7 +18,7 @@ public class ProcessDiscoveryService
     {
         _logger = logger;
     }
-
+>
     public List<ProcessInfo> GetRunningApplications()
     {
         var applications = new List<ProcessInfo>();
@@ -27,7 +27,7 @@ public class ProcessDiscoveryService
         try
         {
             var processes = Process.GetProcesses()
-                .Where(p => HasMainWindow(p, shellWindow))
+                .Where(p => !string.IsNullOrEmpty(p.ProcessName))
                 .OrderBy(p => p.ProcessName)
                 .ToList();
 
@@ -35,23 +35,37 @@ public class ProcessDiscoveryService
             {
                 try
                 {
-                    var processInfo = new ProcessInfo
+                    string processPath;
+
+                    try
+                    {
+                        processPath = process.MainModule?.FileName ?? string.Empty;
+                    }
+                    catch
+                    {
+                        continue;
+                    }
+
+                    if (string.IsNullOrEmpty(processPath))
+                        continue;
+
+                    var processName = process.ProcessName + ".exe";
+                    var hasWindow = HasMainWindow(process, shellWindow);
+                    var isLikelyGame = IsLikelyGameProcess(processName);
+
+                    if (!hasWindow && !isLikelyGame)
+                        continue;
+
+                    applications.Add(new ProcessInfo
                     {
                         ProcessId = process.Id,
-                        ProcessName = process.ProcessName + ".exe",
-                        ProcessPath = process.MainModule?.FileName ?? string.Empty,
-                        MainWindowTitle = process.MainWindowTitle
-                    };
-
-                    // Only add if we have a valid path
-                    if (!string.IsNullOrEmpty(processInfo.ProcessPath))
-                    {
-                        applications.Add(processInfo);
-                    }
+                        ProcessName = processName,
+                        ProcessPath = processPath,
+                        MainWindowTitle = process.MainWindowTitle ?? string.Empty
+                    });
                 }
                 catch (Exception ex)
                 {
-                    // Skip processes we can't access (usually system processes)
                     _logger.LogDebug("Skipping process {ProcessName}: {Error}",
                         process.ProcessName, ex.Message);
                 }
@@ -67,16 +81,18 @@ public class ProcessDiscoveryService
         return applications;
     }
 
+    private bool IsLikelyGameProcess(string processName)
+    {
+        var gamePatterns = new[] { "win64", "win32", "game", "launcher", "client", "ship", "dx11", "dx12" };
+        return gamePatterns.Any(p => processName.ToLowerInvariant().Contains(p));
+    }
+
     private bool HasMainWindow(Process process, IntPtr shellWindow)
     {
         try
         {
-            if (process.MainWindowHandle == IntPtr.Zero)
-                return false;
-
-            if (process.MainWindowHandle == shellWindow)
-                return false;
-
+            if (process.MainWindowHandle == IntPtr.Zero) return false;
+            if (process.MainWindowHandle == shellWindow) return false;
             return IsWindowVisible(process.MainWindowHandle);
         }
         catch

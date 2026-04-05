@@ -1,9 +1,8 @@
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:mixlit/backend/application/util/IconExtractor.dart';
-import 'package:mixlit/frontend/menus/AssignApplicationMenu.dart';
+import 'package:mixlit/backend/application/audio/AppGroup.dart';
 import 'package:path/path.dart' as path;
-import 'package:win32audio/win32audio.dart';
 import 'package:mixlit/backend/application/data/StorageManager.dart';
 
 class ConfigManager {
@@ -27,9 +26,7 @@ class ConfigManager {
   Future<void> saveAppGroup(AppGroup group) async {
     try {
       final existingGroups = await loadAppGroups();
-      // Remove existing group with same ID if it exists
       existingGroups.removeWhere((g) => g.id == group.id);
-      // save
       existingGroups.add(group);
       final groupsJson = existingGroups.map((g) => g.toJson()).toList();
       await _storageManager.saveData('appGroups', groupsJson);
@@ -64,16 +61,12 @@ class ConfigManager {
       for (var i = 0; i < groupsList.length; i++) {
         try {
           final groupData = groupsList[i];
-          final Map<String, dynamic> groupMap;
-
           if (groupData is Map) {
-            groupMap = Map<String, dynamic>.from(groupData);
-
+            final groupMap = Map<String, dynamic>.from(groupData);
             if (groupMap['processNames'] is! List<String>) {
               groupMap['processNames'] =
                   List<String>.from(groupMap['processNames'] as List);
             }
-
             print('Parsing group $i: ${groupMap['name']}');
             groups.add(AppGroup.fromJson(groupMap));
           } else {
@@ -100,10 +93,8 @@ class ConfigManager {
     try {
       final existingGroups = await loadAppGroups();
       existingGroups.removeWhere((g) => g.id == groupId);
-
       final groupsJson = existingGroups.map((g) => g.toJson()).toList();
       await _storageManager.saveData('appGroups', groupsJson);
-
       print('Deleted app group with ID: $groupId');
     } catch (e) {
       print('Error deleting app group: $e');
@@ -118,44 +109,6 @@ class ConfigManager {
       print('Error getting app group by ID: $e');
       return null;
     }
-  }
-
-  Future<List<ProcessVolume>> getRunningAppsForGroup(
-      AppGroup group, List<ProcessVolume> runningApps) async {
-    final matchingApps = <ProcessVolume>[];
-
-    for (final processName in group.processNames) {
-      final normalizedGroupProcessName = normalizeProcessName(processName);
-
-      for (final app in runningApps) {
-        final appProcessName = extractProcessName(app.processPath);
-        final normalizedAppProcessName = normalizeProcessName(appProcessName);
-
-        if (normalizedGroupProcessName == normalizedAppProcessName) {
-          matchingApps.add(app);
-        }
-      }
-    }
-
-    return matchingApps;
-  }
-
-  Future<void> adjustVolumeForGroup(AppGroup group, double volumeLevel,
-      List<ProcessVolume> runningApps) async {
-    final groupApps = await getRunningAppsForGroup(group, runningApps);
-
-    for (final app in groupApps) {
-      try {
-        await adjustVolumeForAllInstances(app, volumeLevel);
-      } catch (e) {
-        print(
-            'Error adjusting volume for app ${app.processPath} in group ${group.name}: $e');
-        //(ignores invalid/null apps)
-      }
-    }
-
-    print(
-        'Adjusted volume for ${groupApps.length} apps in group ${group.name}');
   }
 
   void updateSliderConfigForIntegration(
@@ -335,7 +288,7 @@ class ConfigManager {
   Future<void> cleanupUnusedIcons(List<String> activeProcPaths) async {
     try {
       final activeProcessNames = activeProcPaths
-          .map((path) => normalizeProcessName(extractProcessName(path)))
+          .map((p) => normalizeProcessName(extractProcessName(p)))
           .toSet();
 
       final cachePath = await _getIconCachePath;
@@ -360,17 +313,6 @@ class ConfigManager {
     }
   }
 
-  Future<void> saveLastComPort(String portName) async {
-    await _storageManager.saveData('last-com-port', portName);
-    print('Saved last COM port: $portName');
-  }
-
-  Future<String?> getLastComPort() async {
-    final port = await _storageManager.getData('last-com-port');
-    print('Found last COM port on: $port');
-    return port;
-  }
-
   void updateSliderConfig(
     int sliderIndex,
     String? processPath,
@@ -380,7 +322,7 @@ class ConfigManager {
     String? groupId,
   }) {
     try {
-      final config = {
+      final config = <String, dynamic>{
         'sliderTag': sliderTag,
         'isMuted': isMuted,
       };
@@ -392,8 +334,8 @@ class ConfigManager {
       }
 
       _saveSliderConfig(sliderIndex, config);
-      print(
-          'Updated slider $sliderIndex config: $sliderTag${groupId != null ? ' (group: $groupId)' : ''}');
+      print('Updated slider $sliderIndex config: $sliderTag'
+          '${groupId != null ? ' (group: $groupId)' : ''}');
     } catch (e) {
       print('Error updating slider config: $e');
     }
@@ -403,11 +345,7 @@ class ConfigManager {
     if (sliderIndex >= 0 && sliderIndex < _sliderConfigsCache.length) {
       _sliderConfigsCache[sliderIndex] = config;
       _sliderConfigsDirty = true;
-
-      // Auto-save after a short delay to batch multiple updates
-      Future.delayed(const Duration(milliseconds: 100), () {
-        saveAllSliderConfigs();
-      });
+      Future.delayed(const Duration(milliseconds: 100), saveAllSliderConfigs);
     }
   }
 
@@ -420,8 +358,7 @@ class ConfigManager {
       for (int i = 0; i < _sliderConfigsCache.length; i++) {
         final config = _sliderConfigsCache[i];
         if (config != null) {
-          final Map<String, dynamic> indexedConfig = {'index': i, ...config};
-          sliderConfigs.add(indexedConfig);
+          sliderConfigs.add({'index': i, ...config});
         }
       }
 
@@ -466,7 +403,6 @@ class ConfigManager {
     if (sliderIndex >= 0 && sliderIndex < _sliderConfigsCache.length) {
       final config = _sliderConfigsCache[sliderIndex];
       if (config == null) return null;
-
       return Map<String, dynamic>.from(config);
     }
     return null;
@@ -476,7 +412,6 @@ class ConfigManager {
     if (sliderIndex >= 0 && sliderIndex < _sliderConfigsCache.length) {
       _sliderConfigsCache[sliderIndex] = null;
       _sliderConfigsDirty = true;
-
       await saveAllSliderConfigs();
       print('Removed configuration for slider $sliderIndex');
     }
@@ -491,7 +426,7 @@ class ConfigManager {
     try {
       await _loadSliderConfigsFromDisk();
 
-      final List<double> sliderValues = List.filled(8, 0.5); // Default values
+      final List<double> sliderValues = List.filled(8, 0.5);
       final List<String> sliderTags = List.filled(8, TAG_DEFAULT_DEVICE);
       final List<bool> muteStates = List.filled(8, false);
       final List<Map<String, dynamic>?> sliderConfigs = List.filled(8, null);
@@ -531,7 +466,7 @@ class ConfigManager {
     try {
       final configs = await _loadAllSliderConfigs();
 
-      for (int i = 0; i < configs['sliderConfigs'].length; i++) {
+      for (int i = 0; i < (configs['sliderConfigs'] as List).length; i++) {
         final config = configs['sliderConfigs'][i];
         if (config != null && config['sliderTag'] == TAG_GROUP) {
           final groupId = config['groupId'];
@@ -557,155 +492,10 @@ class ConfigManager {
 
   String extractProcessName(String processPath) {
     if (processPath.isEmpty) return '';
-
-    final fileName = path.basename(processPath).toLowerCase();
-    return fileName;
+    return path.basename(processPath).toLowerCase();
   }
 
   String normalizeProcessName(String processName) {
     return processName.toLowerCase().replaceAll('.exe', '');
-  }
-
-  Future<ProcessVolume?> findMatchingApp(
-      List<ProcessVolume> runningApps, String? savedProcessName) async {
-    if (savedProcessName == null || savedProcessName.isEmpty) {
-      return null;
-    }
-
-    final normalizedSavedName = normalizeProcessName(savedProcessName);
-
-    for (var app in runningApps) {
-      final appName = extractProcessName(app.processPath);
-      final normalizedAppName = normalizeProcessName(appName);
-
-      if (normalizedAppName == normalizedSavedName) {
-        return app;
-      }
-    }
-
-    for (var app in runningApps) {
-      final appName = extractProcessName(app.processPath);
-      final normalizedAppName = normalizeProcessName(appName);
-
-      if (normalizedAppName.contains(normalizedSavedName) ||
-          normalizedSavedName.contains(normalizedAppName)) {
-        return app;
-      }
-    }
-
-    print('No match found for $savedProcessName');
-    return null;
-  }
-
-  bool isDuplicateProcess(
-      List<ProcessVolume?> assignedApps, ProcessVolume candidateApp) {
-    final candidateName =
-        normalizeProcessName(extractProcessName(candidateApp.processPath));
-
-    for (var assignedApp in assignedApps) {
-      if (assignedApp == null) continue;
-
-      final assignedName =
-          normalizeProcessName(extractProcessName(assignedApp.processPath));
-
-      if (candidateName == assignedName) {
-        return true;
-      }
-    }
-
-    return false;
-  }
-
-  List<ProcessVolume> filterDuplicateApps(
-      List<ProcessVolume> runningApps, List<ProcessVolume?> assignedApps) {
-    final Map<String, ProcessVolume> uniqueApps = {};
-    final List<ProcessVolume> result = [];
-
-    for (var assignedApp in assignedApps) {
-      if (assignedApp == null) continue;
-
-      final appName =
-          normalizeProcessName(extractProcessName(assignedApp.processPath));
-
-      uniqueApps[appName] = assignedApp;
-    }
-
-    for (var app in runningApps) {
-      final appName = normalizeProcessName(extractProcessName(app.processPath));
-
-      if (!uniqueApps.containsKey(appName)) {
-        uniqueApps[appName] = app;
-        result.add(app);
-      }
-    }
-
-    return result;
-  }
-
-  Future<void> adjustVolumeForAllInstances(
-      ProcessVolume targetApp, double volumeLevel) async {
-    try {
-      final allRunningApps = await Audio.enumAudioMixer() ?? [];
-
-      final targetName =
-          normalizeProcessName(extractProcessName(targetApp.processPath));
-
-      for (var app in allRunningApps) {
-        final appName =
-            normalizeProcessName(extractProcessName(app.processPath));
-
-        if (appName == targetName) {
-          if (volumeLevel <= 0.009) {
-            volumeLevel = 0.0001;
-          }
-
-          Audio.setAudioMixerVolume(app.processId, volumeLevel);
-        }
-      }
-    } catch (e) {
-      print('Error adjusting volume for all instances: $e');
-    }
-  }
-
-  Future<void> saveApplicationState(
-      List<double> sliderValues,
-      List<ProcessVolume?> assignedApps,
-      List<String> sliderTags,
-      List<bool> muteStates) async {
-    for (var i = 0; i < sliderTags.length && i < 8; i++) {
-      final tag = sliderTags[i];
-      String? processPath;
-
-      if (tag == TAG_APP &&
-          i < assignedApps.length &&
-          assignedApps[i] != null) {
-        processPath = assignedApps[i]?.processPath;
-      }
-
-      updateSliderConfig(i, processPath, sliderTags[i], muteStates[i],
-          volumeValue: sliderValues[i]);
-    }
-
-    await saveAllSliderConfigs();
-    print('App state saved!!!!!');
-  }
-
-  Future<void> onApplicationAssigned(int sliderIndex, ProcessVolume app,
-      double volume, String sliderTag, bool isMuted) async {
-    updateSliderConfig(sliderIndex, app.processPath, sliderTag, isMuted,
-        volumeValue: volume);
-
-    await saveAllSliderConfigs();
-    print('Application assigned to slider $sliderIndex and saved to disk');
-  }
-
-  Future<void> onSpecialSliderAssigned(
-      int sliderIndex, String specialTag, double volume, bool isMuted) async {
-    updateSliderConfig(sliderIndex, null, specialTag, isMuted,
-        volumeValue: volume);
-
-    await saveAllSliderConfigs();
-    print(
-        'Special feature "$specialTag" assigned to slider $sliderIndex and saved');
   }
 }

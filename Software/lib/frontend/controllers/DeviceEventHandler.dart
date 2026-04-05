@@ -1,10 +1,9 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:mixlit/backend/application/serial/SerialWorker.dart';
-import 'package:mixlit/backend/application/audio/MuteState.dart';
+import 'package:mixlit/backend/serial/DeviceServiceClient.dart';
 
 class DeviceEventHandler {
-  final SerialWorker worker;
+  final DeviceServiceClient worker;
   final Function(Map<int, int>) onSliderDataReceived;
   final Function(int, bool, bool) onButtonEvent;
   final Function(bool) onConnectionStateChanged;

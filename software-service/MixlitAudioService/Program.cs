@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using MixlitAudioService.Hubs;
 using MixlitAudioService.Services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -34,6 +35,8 @@ builder.Services.AddSingleton<ActiveWindowService>();
 builder.Services.AddSingleton<IconExtractionService>();
 builder.Services.AddHostedService<AudioSessionMonitor>();
 builder.Services.AddSingleton<ProcessDiscoveryService>();
+builder.Services.AddSingleton<SerialDeviceService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<SerialDeviceService>());
 
 // Port
 builder.WebHost.ConfigureKestrel(options =>
@@ -60,6 +63,7 @@ app.UseCors("FlutterApp");
 
 app.MapControllers();
 app.MapHub<AudioHub>("/hub/audio");
+app.MapHub<DeviceHub>("/hub/device");
 
 // Health check endpoint
 app.MapGet("/health", () => Results.Ok(new { status = "healthy", timestamp = DateTime.UtcNow }));

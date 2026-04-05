@@ -42,7 +42,6 @@ class StartupConfig {
           args: ['--auto-start'],
         );
         await launchAtStartup.enable();
-        print('Configured startup to launch: $launcherPath');
       } else {
         print(
             'Warning: Launcher not found at $launcherPath, using direct launch');

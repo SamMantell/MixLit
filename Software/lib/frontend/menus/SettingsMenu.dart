@@ -2,10 +2,12 @@ import 'dart:convert';
 import 'dart:ui';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:mixlit/backend/Updater.dart';
+import 'package:mixlit/frontend/menus/dialog/Update.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:launch_at_startup/launch_at_startup.dart';
-import 'package:mixlit/backend/application/data/ConfigManager.dart';
 import 'package:window_manager/window_manager.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 class SettingsManager {
   static const String _autoStartupKey = 'auto_startup_enabled';
@@ -16,6 +18,7 @@ class SettingsManager {
   static const String _appGradientsKey = 'app_gradients_enabled';
   static const String _updateNotificationsKey = 'update_notifications_enabled';
   static const String _saveLastComPortKey = 'save_last_com_port';
+  static const String _noiseReductionKey = 'noise_reduction_threshold';
 
   static Future<bool> getAutoStartup() async {
     final prefs = await SharedPreferences.getInstance();
@@ -102,6 +105,16 @@ class SettingsManager {
   static Future<void> setSaveLastComPort(bool enabled) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_saveLastComPortKey, enabled);
+  }
+
+  static Future<double> getNoiseReduction() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getDouble(_noiseReductionKey) ?? 20.0;
+  }
+
+  static Future<void> setNoiseReduction(double threshold) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(_noiseReductionKey, threshold);
   }
 }
 
@@ -289,6 +302,7 @@ Future<void> showSettingsDialog(
   Stream<Map<int, int>>? sliderDataStream,
   Stream<Map<String, int>>? buttonDataStream,
   Function(bool)? onThemeChanged,
+  UpdateInfo? pendingUpdate,
 }) async {
   const String noiseTextureBase64 =
       'PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8ZGVmcz4KICAgIDxmaWx0ZXIgaWQ9Im5vaXNlIj4KICAgICAgPGZlVHVyYnVsZW5jZSBiYXNlRnJlcXVlbmN5PSIwLjkiIG51bU9jdGF2ZXM9IjQiIHNlZWQ9IjIiLz4KICAgICAgPGZlQ29sb3JNYXRyaXggdHlwZT0ic2F0dXJhdGUiIHZhbHVlcz0iMCIvPgogICAgPC9maWx0ZXI+CiAgPC9kZWZzPgogIDxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbHRlcj0idXJsKCNub2lzZSkiIG9wYWNpdHk9IjAuMDUiLz4KPC9zdmc+';
@@ -304,6 +318,7 @@ Future<void> showSettingsDialog(
         sliderDataStream: sliderDataStream,
         buttonDataStream: buttonDataStream,
         onThemeChanged: onThemeChanged,
+        pendingUpdate: pendingUpdate,
       );
     },
   );
@@ -315,6 +330,7 @@ class SettingsDialog extends StatefulWidget {
   final Stream<Map<int, int>>? sliderDataStream;
   final Stream<Map<String, int>>? buttonDataStream;
   final Function(bool)? onThemeChanged;
+  final UpdateInfo? pendingUpdate;
 
   const SettingsDialog({
     super.key,
@@ -323,6 +339,7 @@ class SettingsDialog extends StatefulWidget {
     this.sliderDataStream,
     this.buttonDataStream,
     this.onThemeChanged,
+    this.pendingUpdate,
   });
 
   @override
@@ -339,6 +356,8 @@ class _SettingsDialogState extends State<SettingsDialog> {
   bool _updateNotifications = true;
   bool _saveLastComPort = true;
   bool _showTerminal = false;
+  double _noiseReduction = 20.0;
+  String _currentVersion = '';
 
   @override
   void initState() {
@@ -355,6 +374,8 @@ class _SettingsDialogState extends State<SettingsDialog> {
     final appGradients = await SettingsManager.getAppGradients();
     final updateNotifications = await SettingsManager.getUpdateNotifications();
     final saveLastComPort = await SettingsManager.getSaveLastComPort();
+    final noiseReduction = await SettingsManager.getNoiseReduction();
+    final packageInfo = await PackageInfo.fromPlatform();
 
     setState(() {
       _autoStartup = autoStartup;
@@ -365,6 +386,8 @@ class _SettingsDialogState extends State<SettingsDialog> {
       _appGradients = appGradients;
       _updateNotifications = updateNotifications;
       _saveLastComPort = saveLastComPort;
+      _noiseReduction = noiseReduction;
+      _currentVersion = packageInfo.version;
     });
   }
 
@@ -475,6 +498,7 @@ class _SettingsDialogState extends State<SettingsDialog> {
     required double max,
     IconData? icon,
     bool enabled = true,
+    String Function(double)? valueLabel,
   }) {
     final bool isDarkMode = Theme.of(context).brightness == Brightness.dark;
 
@@ -568,7 +592,9 @@ class _SettingsDialogState extends State<SettingsDialog> {
                   Container(
                     width: 45,
                     child: Text(
-                      '${(value * 100).round()}%',
+                      valueLabel != null
+                          ? valueLabel(value)
+                          : '${(value * 100).round()}%',
                       style: TextStyle(
                         fontFamily: 'BitstreamVeraSans',
                         color: enabled
@@ -823,8 +849,8 @@ class _SettingsDialogState extends State<SettingsDialog> {
                                     widget.onThemeChanged!(value);
                                   }
                                   Navigator.of(context).pop();
-                                  Future.delayed(Duration(milliseconds: 100),
-                                      () {
+                                  Future.delayed(
+                                      const Duration(milliseconds: 100), () {
                                     showSettingsDialog(
                                       context,
                                       rawDataStream: widget.rawDataStream,
@@ -847,6 +873,97 @@ class _SettingsDialogState extends State<SettingsDialog> {
                                   setState(() => _updateNotifications = value);
                                 },
                                 icon: Icons.notifications,
+                              ),
+                              // update banner
+                              if (widget.pendingUpdate != null) ...[
+                                const SizedBox(height: 8),
+                                Divider(
+                                  color: isDarkMode
+                                      ? Colors.white.withOpacity(0.1)
+                                      : Colors.black.withOpacity(0.1),
+                                  indent: 16,
+                                  endIndent: 16,
+                                ),
+                                const SizedBox(height: 4),
+                                Container(
+                                  margin: const EdgeInsets.symmetric(
+                                      horizontal: 16, vertical: 8),
+                                  padding: const EdgeInsets.all(14),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFF6AAF50)
+                                        .withOpacity(0.12),
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(
+                                      color: const Color(0xFF6AAF50)
+                                          .withOpacity(0.4),
+                                      width: 1,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      const Icon(Icons.system_update_alt,
+                                          color: Color(0xFF6AAF50), size: 20),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Text(
+                                          'Version ${widget.pendingUpdate!.latestVersion} is available.',
+                                          style: const TextStyle(
+                                            fontFamily: 'BitstreamVeraSans',
+                                            color: Color(0xFF6AAF50),
+                                            fontWeight: FontWeight.w600,
+                                            fontSize: 14,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 4),
+                                      ElevatedButton(
+                                        onPressed: () {
+                                          Navigator.of(context).pop();
+                                          Updater().showUpdateDialog(
+                                              context, widget.pendingUpdate!);
+                                        },
+                                        style: ElevatedButton.styleFrom(
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 14, vertical: 8),
+                                          backgroundColor:
+                                              const Color(0xFF6AAF50),
+                                          foregroundColor: Colors.white,
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(7),
+                                          ),
+                                        ),
+                                        child: const Text(
+                                          'View Changes',
+                                          style: TextStyle(
+                                            fontFamily: 'BitstreamVeraSans',
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                              // version footer bit
+                              const SizedBox(height: 8),
+                              Padding(
+                                padding: const EdgeInsets.only(bottom: 12),
+                                child: Center(
+                                  child: Text(
+                                    _currentVersion.isEmpty
+                                        ? ''
+                                        : 'MixLit v$_currentVersion',
+                                    style: TextStyle(
+                                      fontFamily: 'BitstreamVeraSans',
+                                      fontSize: 12,
+                                      color: isDarkMode
+                                          ? Colors.white.withOpacity(0.25)
+                                          : Colors.black.withOpacity(0.25),
+                                    ),
+                                  ),
+                                ),
                               ),
                             ],
                           ),
@@ -930,6 +1047,23 @@ class _SettingsDialogState extends State<SettingsDialog> {
                                   setState(() => _saveLastComPort = value);
                                 },
                                 icon: Icons.usb,
+                              ),
+                              const SizedBox(height: 8),
+                              _buildSliderItem(
+                                title: 'Noise Reduction',
+                                subtitle:
+                                    'Minimum movement required to register a slider adjustment (0 is off).',
+                                value: _noiseReduction,
+                                onChanged: (value) async {
+                                  await SettingsManager.setNoiseReduction(
+                                      value);
+                                  setState(() => _noiseReduction = value);
+                                },
+                                min: 0,
+                                max: 100,
+                                icon: Icons.tune,
+                                valueLabel: (v) =>
+                                    v == 0 ? 'Off' : v.round().toString(),
                               ),
                               const SizedBox(height: 8),
                               _buildActionItem(
